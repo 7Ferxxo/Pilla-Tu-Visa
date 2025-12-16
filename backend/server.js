@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db');
+const ai = require('./ai');
 
 const app = express();
 
@@ -35,6 +36,56 @@ app.get('/clients', async (req, res) => {
   } catch (error) {
     console.error('Error al listar clientes:', error);
     res.status(500).json({ ok: false, error: true, mensaje: 'Error al cargar clientes' });
+  }
+});
+
+app.post('/ai/tips', async (req, res) => {
+  const { perfil, fechaCita } = req.body || {};
+  try {
+    const client = ai.buildClient();
+    const system = 'Eres un asistente para preparar entrevistas de visa. Responde en español, claro y profesional. No menciones que eres IA. No uses emojis.';
+    const user = [
+      'Genera un texto listo para copiar y enviar al cliente con: (1) 6-10 preguntas probables para la entrevista, (2) 6 consejos rápidos, (3) recordatorios de documentos.',
+      `Perfil del cliente: ${String(perfil || '').trim() || 'No especificado'}`,
+      `Fecha de cita: ${String(fechaCita || '').trim() || 'No especificada'}`,
+      'Formato: usa encabezados cortos y viñetas. Sé práctico.',
+    ].join('\n');
+
+    const text = await client.chat({ system, user, temperature: 0.5 });
+    res.json({ ok: true, text });
+  } catch (error) {
+    if (error && error.code === 'NO_OPENAI_KEY') {
+      return res.status(501).json({ ok: false, mensaje: 'Falta configurar OPENAI_API_KEY en backend/.env' });
+    }
+    console.error('Error IA tips:', error);
+    res.status(500).json({ ok: false, mensaje: 'Error al generar tips' });
+  }
+});
+
+app.post('/ai/resultado', async (req, res) => {
+  const { estado, detalle } = req.body || {};
+  if (!estado) {
+    return res.status(400).json({ ok: false, mensaje: 'Falta estado' });
+  }
+
+  try {
+    const client = ai.buildClient();
+    const system = 'Eres un redactor profesional de mensajes para clientes. Responde en español. No menciones que eres IA. No uses emojis.';
+    const user = [
+      'Redacta un mensaje corto (80-140 palabras) para el cliente sobre el resultado de su visa. Debe sonar humano y respetuoso.',
+      `Estado: ${String(estado).trim()}`,
+      `Detalles: ${String(detalle || '').trim() || 'No especificados'}`,
+      'Si es denegada, incluye pasos siguientes concretos sin sonar alarmista. Si es aprobada, felicita y sugiere próximos pasos.',
+    ].join('\n');
+
+    const text = await client.chat({ system, user, temperature: 0.6 });
+    res.json({ ok: true, text });
+  } catch (error) {
+    if (error && error.code === 'NO_OPENAI_KEY') {
+      return res.status(501).json({ ok: false, mensaje: 'Falta configurar OPENAI_API_KEY en backend/.env' });
+    }
+    console.error('Error IA resultado:', error);
+    res.status(500).json({ ok: false, mensaje: 'Error al redactar mensaje' });
   }
 });
 

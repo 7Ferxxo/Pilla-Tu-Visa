@@ -135,18 +135,42 @@ document.addEventListener('DOMContentLoaded', () => {
     btnGenerar.addEventListener('click', () => {
         const perfil = (perfilCliente.value || '').trim();
         const fecha = (fechaCita.value || '').trim();
-        const lines = [
-            'Preguntas para la entrevista:',
-            '',
-            '- ¿Cuál es el propósito del viaje?',
-            '- ¿Cuánto tiempo planea quedarse?',
-            '- ¿Quién cubre los gastos del viaje?',
-            '- ¿A qué se dedica actualmente?',
-            '- ¿Qué lazos tiene en su país de origen?',
-        ];
-        if (perfil) lines.splice(2, 0, `Perfil: ${perfil}`, '');
-        if (fecha) lines.splice(2, 0, `Fecha de cita: ${fecha}`, '');
-        tipsMensaje.value = lines.join('\n');
+        const fallback = () => {
+            const lines = [
+                'Preguntas para la entrevista:',
+                '',
+                '- ¿Cuál es el propósito del viaje?',
+                '- ¿Cuánto tiempo planea quedarse?',
+                '- ¿Quién cubre los gastos del viaje?',
+                '- ¿A qué se dedica actualmente?',
+                '- ¿Qué lazos tiene en su país de origen?',
+            ];
+            if (perfil) lines.splice(2, 0, `Perfil: ${perfil}`, '');
+            if (fecha) lines.splice(2, 0, `Fecha de cita: ${fecha}`, '');
+            tipsMensaje.value = lines.join('\n');
+        };
+
+        btnGenerar.disabled = true;
+        btnGenerar.textContent = 'Generando...';
+        tipsStatus.style.display = 'none';
+
+        fetch('/ai/tips', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ perfil, fechaCita: fecha }),
+        })
+            .then(async (r) => {
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data.ok || !data.text) throw new Error(data.mensaje || 'Error');
+                tipsMensaje.value = data.text;
+            })
+            .catch(() => {
+                fallback();
+            })
+            .finally(() => {
+                btnGenerar.disabled = false;
+                btnGenerar.textContent = 'Sugerir Preguntas';
+            });
     });
 
     tipsForm.addEventListener('submit', async (event) => {
@@ -185,11 +209,35 @@ document.addEventListener('DOMContentLoaded', () => {
     btnRedactar.addEventListener('click', () => {
         const estado = estadoInput.value;
         const det = (detalle.value || '').trim();
-        if (estado === 'Aprobada') {
-            resultadoMensaje.value = `¡Felicitaciones! Tu visa fue aprobada.${det ? ` ${det}` : ''}`;
-        } else {
-            resultadoMensaje.value = `Tu visa fue denegada.${det ? ` ${det}` : ''} Si quieres, te ayudamos a prepararte para una próxima cita.`;
-        }
+        const fallback = () => {
+            if (estado === 'Aprobada') {
+                resultadoMensaje.value = `¡Felicitaciones! Tu visa fue aprobada.${det ? ` ${det}` : ''}`;
+            } else {
+                resultadoMensaje.value = `Tu visa fue denegada.${det ? ` ${det}` : ''} Si quieres, te ayudamos a prepararte para una próxima cita.`;
+            }
+        };
+
+        btnRedactar.disabled = true;
+        btnRedactar.textContent = 'Redactando...';
+        resultadoStatus.style.display = 'none';
+
+        fetch('/ai/resultado', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ estado, detalle: det }),
+        })
+            .then(async (r) => {
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data.ok || !data.text) throw new Error(data.mensaje || 'Error');
+                resultadoMensaje.value = data.text;
+            })
+            .catch(() => {
+                fallback();
+            })
+            .finally(() => {
+                btnRedactar.disabled = false;
+                btnRedactar.textContent = 'Redactar Mensaje';
+            });
     });
 
     resultadoForm.addEventListener('submit', async (event) => {
