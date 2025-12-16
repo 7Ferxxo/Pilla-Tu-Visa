@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('./db');
 const ai = require('./ai');
+const emailService = require('./email');
 
 const app = express();
 
@@ -173,9 +174,9 @@ app.post('/resultado', async (req, res) => {
 });
 
 app.post('/register', async (req, res) => {
-  const { nombre, email, concepto, monto, metodo } = req.body;
+  const { nombre, email: emailAddress, concepto, monto, metodo } = req.body;
 
-  if (!nombre || !email || !concepto || !monto || !metodo) {
+  if (!nombre || !emailAddress || !concepto || !monto || !metodo) {
     return res.status(400).json({
       error: true,
       mensaje: 'Faltan datos obligatorios',
@@ -190,16 +191,48 @@ app.post('/register', async (req, res) => {
 
     const [result] = await db.pool.execute(sql, [
       nombre,
-      email,
+      emailAddress,
       concepto,
       monto,
       metodo,
     ]);
 
+    const reciboId = result.insertId;
+
+    let emailSent = false;
+    let emailError = null;
+    try {
+      if (emailService.hasEmailConfig()) {
+        const host = req.get('host');
+        const proto = req.protocol;
+        const reciboUrl = `${proto}://${host}/recibo/${reciboId}`;
+
+        const montoNum = Number(monto);
+        const montoFmt = Number.isFinite(montoNum) ? montoNum.toFixed(2) : String(monto);
+
+        await emailService.sendReceiptEmail({
+          to: emailAddress,
+          clienteNombre: nombre,
+          reciboId,
+          monto: montoFmt,
+          concepto,
+          metodo,
+          reciboUrl,
+        });
+
+        emailSent = true;
+      }
+    } catch (err) {
+      emailError = 'No se pudo enviar el correo.';
+      console.error('Error enviando correo:', err);
+    }
+
     res.status(201).json({
       error: false,
       mensaje: 'Recibo guardado correctamente',
-      reciboId: result.insertId,
+      reciboId,
+      emailSent,
+      emailError,
     });
   } catch (error) {
     console.error('Error al guardar recibo:', error);
