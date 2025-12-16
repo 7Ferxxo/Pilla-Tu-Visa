@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pilla Tu Visa</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="top">
+            <img src="http://localhost:3000/imagenes/logo.png" alt="Logo" class="logo">
+            <h1 class="page-title">Inicio</h1>
+        </header>
+
+        <nav class="tabs" aria-label="Navegación">
+            <button type="button" class="tab tab--active" data-view="nuevo">Nuevo Cliente</button>
+            <button type="button" class="tab" data-view="tips">Enviar Tips + IA</button>
+            <button type="button" class="tab" data-view="resultado">Resultado</button>
+        </nav>
+
+        <section class="card" data-section="nuevo">
+            <h2 class="card-title">Registrar Cliente</h2>
+
+            <form id="registroForm" class="registro-form">
+                <div class="input-group">
+                    <label for="nombre">Nombre</label>
+                    <input type="text" id="nombre" name="nombre" required>
+                </div>
+
+                <div class="input-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+
+                <div class="row">
+                    <div class="input-group half-width">
+                        <label for="monto">Monto</label>
+                        <input type="number" id="monto" name="monto" step="0.01" required>
+                    </div>
+
+                    <div class="input-group half-width">
+                        <label for="metodo">Método</label>
+                        <select id="metodo" name="metodo" required>
+                            <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
+                            <option value="Transferencia Bancaria">Transferencia Bancaria</option>
+                            <option value="Efectivo" selected>Efectivo</option>
+                            <option value="Nequi/Yappy">Nequi/Yappy</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="concepto">Concepto</label>
+                    <input type="text" id="concepto" name="concepto" required value="Asesoría Visa">
+                </div>
+
+                <div class="input-group">
+                    <label for="notas">Notas</label>
+                    <textarea id="notas" name="notas" rows="3"></textarea>
+                </div>
+
+                <button type="submit" id="btn-submit" class="btn-primary">
+                    Guardar y Enviar Recibo
+                </button>
+            </form>
+
+            <div id="mensaje" class="mensaje-oculto" role="status" aria-live="polite"></div>
+        </section>
+
+        <section class="card is-hidden" data-section="tips">
+            <h2 class="card-title">Tips de Entrevista</h2>
+
+            <form id="tipsForm" class="registro-form">
+                <div class="input-group">
+                    <label for="tipsCliente">Cliente</label>
+                    <select id="tipsCliente" name="clienteId" required>
+                        <option value="" selected>Selecciona...</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label for="fechaCita">Fecha Cita</label>
+                    <input type="date" id="fechaCita" name="fechaCita" required>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-title">Asistente IA</div>
+                    <div class="input-group">
+                        <input type="text" id="perfilCliente" name="perfil" placeholder="Perfil del cliente (Ej: Estudiante...)" />
+                    </div>
+                    <button type="button" id="btnGenerar" class="btn-purple">Sugerir Preguntas</button>
+                </div>
+
+                <div class="input-group">
+                    <label for="tipsMensaje">Mensaje</label>
+                    <textarea id="tipsMensaje" name="mensaje" rows="5" required></textarea>
+                </div>
+
+                <button type="submit" id="btnEnviarTips" class="btn-primary">Enviar Tips</button>
+            </form>
+
+            <div id="tipsStatus" class="mensaje-oculto" role="status" aria-live="polite"></div>
+        </section>
+
+        <section class="card is-hidden" data-section="resultado">
+            <h2 class="card-title">Resultado Visa</h2>
+
+            <form id="resultadoForm" class="registro-form">
+                <div class="input-group">
+                    <label for="resultadoCliente">Cliente</label>
+                    <select id="resultadoCliente" name="clienteId" required>
+                        <option value="" selected>Selecciona...</option>
+                    </select>
+                </div>
+
+                <div class="segmented" role="group" aria-label="Estado">
+                    <button type="button" class="segmented-btn segmented-btn--ok" data-estado="Aprobada">Aprobada</button>
+                    <button type="button" class="segmented-btn segmented-btn--bad" data-estado="Denegada">Denegada</button>
+                </div>
+
+                <input type="hidden" id="estado" name="estado" value="Aprobada" />
+
+                <div class="panel">
+                    <div class="panel-title">Redactor IA</div>
+                    <div class="input-group">
+                        <label id="detalleLabel" for="detalle">Detalles alegría</label>
+                        <input type="text" id="detalle" name="detalle" />
+                    </div>
+                    <button type="button" id="btnRedactar" class="btn-purple">Redactar Mensaje</button>
+                </div>
+
+                <div class="input-group">
+                    <label for="resultadoMensaje">Mensaje Personalizado</label>
+                    <textarea id="resultadoMensaje" name="mensaje" rows="5" required></textarea>
+                </div>
+
+                <button type="submit" id="btnNotificar" class="btn-primary">Notificar</button>
+            </form>
+
+            <div id="resultadoStatus" class="mensaje-oculto" role="status" aria-live="polite"></div>
+        </section>
+
+        <footer class="footer">
+            <div>Pilla Tu Visa System 2025</div>
+            <div>BY: Ferxxu</div>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

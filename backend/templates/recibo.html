@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Recibo #{{id}}</title>
+  <link rel="stylesheet" href="/recibo.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="header">
+        <img class="logo" src="/imagenes/logo.png" alt="Logo" />
+        <div class="title">
+          <h1>Comprobante Oficial de Pago</h1>
+        </div>
+        <div class="logo-spacer" aria-hidden="true"></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="meta">
+        <div class="meta-row"><div class="k">Fecha de Emisión:</div><div class="v">{{fechaEmision}}</div></div>
+        <div class="meta-row"><div class="k">Cliente:</div><div class="v">{{nombre}}</div></div>
+        <div class="meta-row"><div class="k">Email:</div><div class="v">{{email}}</div></div>
+        <div class="meta-row"><div class="k">Método de Pago:</div><div class="v">{{metodo}}</div></div>
+      </div>
+
+      <div class="table">
+        <div class="thead">
+          <div class="cell">CONCEPTO DEL SERVICIO</div>
+          <div class="cell amount">MONTO PAGADO</div>
+        </div>
+        <div class="trow">
+          <div class="cell">{{concepto}}</div>
+          <div class="cell amount">${{monto}}</div>
+        </div>
+        <div class="trow total">
+          <div class="cell muted">TOTAL</div>
+          <div class="cell amount muted">${{monto}}</div>
+        </div>
+      </div>
+
+      <div class="foot">Este comprobante es generado automáticamente por el sistema Pilla Tu Visa.</div>
+    </div>
+  </div>
+</body>
+</html>
