@@ -67,6 +67,13 @@ body {
     cursor: pointer;
 }
 
+.tab-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+}
+
 .tab--active {
     background: #111827;
     color: #ffffff;
