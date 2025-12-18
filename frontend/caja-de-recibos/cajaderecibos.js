@@ -2,6 +2,26 @@ document.addEventListener('DOMContentLoaded', () => {
   const statusEl = document.getElementById('recibosStatus');
   const bodyEl = document.getElementById('recibosBody');
   const btnRecargar = document.getElementById('btnRecargar');
+  const btnLogout = document.getElementById('btnLogout');
+  const sessionInfoEl = document.getElementById('sessionInfo');
+
+  const TOKEN_KEY = 'ptv_token';
+  const USER_KEY = 'ptv_user';
+
+  const getToken = () => localStorage.getItem(TOKEN_KEY) || '';
+  const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+  const getUserInfo = () => {
+    try {
+      return JSON.parse(localStorage.getItem(USER_KEY) || 'null') || null;
+    } catch {
+      return null;
+    }
+  };
+  const clearUserInfo = () => localStorage.removeItem(USER_KEY);
+
+  const redirectToLogin = () => {
+    window.location.href = '/login/index.html';
+  };
 
   const setStatus = (texto, tipo) => {
     if (!statusEl) return;
@@ -44,6 +64,21 @@ document.addEventListener('DOMContentLoaded', () => {
     return escaped.replace(/\r\n|\n|\r/g, '<br>');
   };
 
+  const updateSessionInfo = () => {
+    if (!sessionInfoEl) return;
+    const info = getUserInfo();
+    if (info && info.username) {
+      sessionInfoEl.textContent = `Sesión: ${info.username}${info.role ? ` (${info.role})` : ''}`;
+      sessionInfoEl.style.display = 'inline-flex';
+    } else if (getToken()) {
+      sessionInfoEl.textContent = 'Sesión activa';
+      sessionInfoEl.style.display = 'inline-flex';
+    } else {
+      sessionInfoEl.textContent = '';
+      sessionInfoEl.style.display = 'none';
+    }
+  };
+
   const renderRows = (rows) => {
     if (!bodyEl) return;
     bodyEl.innerHTML = '';
@@ -72,13 +107,33 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
+  const fetchWithAuth = async (url, options = {}) => {
+    const token = getToken();
+    if (!token) {
+      redirectToLogin();
+      throw new Error('Unauthorized');
+    }
+    const opts = { ...options, headers: { ...(options.headers || {}) } };
+    if (token) {
+      opts.headers.Authorization = `Bearer ${token}`;
+    }
+    const resp = await fetch(url, opts);
+    if (resp.status === 401 || resp.status === 403) {
+      clearToken();
+      clearUserInfo();
+      redirectToLogin();
+      throw new Error('Unauthorized');
+    }
+    return resp;
+  };
+
   const deleteRecibo = async (id) => {
     const ok = window.confirm(`¿Eliminar el recibo #${id}? Esta acción no se puede deshacer.`);
     if (!ok) return;
 
     setStatus(`Eliminando recibo #${id}...`, 'exito');
     try {
-      const resp = await fetch(`/recibos/${encodeURIComponent(String(id))}`, { method: 'DELETE' });
+      const resp = await fetchWithAuth(`/recibos/${encodeURIComponent(String(id))}`, { method: 'DELETE' });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok || !data.ok) throw new Error(data.mensaje || 'Error');
       setStatus(`Recibo #${id} eliminado.`, 'exito');
@@ -102,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const load = async () => {
     setStatus('Cargando recibos...', 'exito');
     try {
-      const resp = await fetch('/recibos?limit=200');
+      const resp = await fetchWithAuth('/recibos?limit=200');
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok || !data.ok) throw new Error(data.mensaje || 'Error');
       clearStatus();
@@ -110,10 +165,27 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       console.error(e);
       renderEmpty();
+      if (e && e.message === 'Unauthorized') return;
       setStatus('No se pudo cargar el listado de recibos.', 'error');
     }
   };
 
   if (btnRecargar) btnRecargar.addEventListener('click', load);
+
+  if (btnLogout) {
+    btnLogout.addEventListener('click', () => {
+      clearToken();
+      clearUserInfo();
+      renderEmpty();
+      redirectToLogin();
+    });
+  }
+
+  if (!getToken()) {
+    redirectToLogin();
+    return;
+  }
+
+  updateSessionInfo();
   load();
 });

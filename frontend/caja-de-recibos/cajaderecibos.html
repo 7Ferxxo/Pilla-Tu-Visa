@@ -7,7 +7,7 @@
   <link rel="icon" type="image/png" href="/imagenes/logo.png?v=1" />
   <link rel="shortcut icon" type="image/png" href="/imagenes/logo.png?v=1" />
   <link rel="apple-touch-icon" href="/imagenes/logo.png?v=1" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="../styles.css" />
   <link rel="stylesheet" href="cajaderecibos.css" />
 </head>
 <body>
@@ -20,7 +20,13 @@
     <section class="card">
       <div class="receipt-toolbar">
         <a class="btn-back" href="/register">← Volver</a>
-        <button type="button" id="btnRecargar" class="btn-secondary">Recargar</button>
+        <div class="toolbar-meta">
+          <div id="sessionInfo" class="session-pill" aria-live="polite"></div>
+          <div class="toolbar-actions">
+            <button type="button" id="btnLogout" class="btn-secondary btn-ghost" aria-label="Cerrar sesión" title="Cerrar sesión">Cerrar sesión</button>
+            <button type="button" id="btnRecargar" class="btn-secondary">Recargar</button>
+          </div>
+        </div>
       </div>
 
       <div id="recibosStatus" class="mensaje-oculto" role="status" aria-live="polite"></div>

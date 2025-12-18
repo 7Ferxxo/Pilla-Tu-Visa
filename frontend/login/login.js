@@ -41,9 +41,9 @@ const togglePasswordVisibility = () => {
   const input = document.getElementById('password');
   const btn = document.getElementById('togglePassword');
   if (!input || !btn) return;
-  const isHidden = input.type === 'password';
-  input.type = isHidden ? 'text' : 'password';
-  btn.textContent = isHidden ? 'Ocultar' : 'Ver';
+  const reveal = input.type === 'password';
+  input.type = reveal ? 'text' : 'password';
+  btn.textContent = reveal ? 'Ocultar' : 'Ver';
 };
 
 const showLeadStatus = (message, type = 'ok') => {
@@ -122,51 +122,12 @@ if (toggleBtn) {
   });
 }
 
-const loginPanel = document.getElementById('loginPanel');
-const openLoginBtn = document.getElementById('openLogin');
-const loginMenuToggle = document.getElementById('loginMenuToggle');
-const leadLinkHero = document.getElementById('leadLinkHero');
+const heroLeadBtn = document.getElementById('heroLeadBtn');
+const leadSection = document.getElementById('lead-section');
 
-const syncPanelState = (isOpen) => {
-  if (!loginPanel) return;
-  loginPanel.setAttribute('data-state', isOpen ? 'open' : 'closed');
-  document.body.classList.toggle('login-panel-open', isOpen);
-  if (loginMenuToggle) {
-    loginMenuToggle.classList.toggle('is-active', isOpen);
-    loginMenuToggle.setAttribute('aria-expanded', String(isOpen));
-  }
-};
-
-const openLoginPanel = () => syncPanelState(true);
-const closeLoginPanel = () => syncPanelState(false);
-const toggleLoginPanel = () => {
-  if (!loginPanel) return;
-  const isOpen = loginPanel.getAttribute('data-state') === 'open';
-  syncPanelState(!isOpen);
-};
-
-if (openLoginBtn) {
-  openLoginBtn.addEventListener('click', (ev) => {
+if (heroLeadBtn && leadSection) {
+  heroLeadBtn.addEventListener('click', (ev) => {
     ev.preventDefault();
-    openLoginPanel();
+    leadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 }
-
-if (loginMenuToggle) {
-  loginMenuToggle.addEventListener('click', (ev) => {
-    ev.preventDefault();
-    toggleLoginPanel();
-  });
-}
-
-if (leadLinkHero) {
-  leadLinkHero.addEventListener('click', () => {
-    closeLoginPanel();
-  });
-}
-
-document.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape') {
-    closeLoginPanel();
-  }
-});
