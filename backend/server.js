@@ -178,7 +178,7 @@ app.post('/api/login', (req, res) => {
 
   const storedPass = String(found.password || '').trim();
   if (storedPass !== providedPass) {
-    console.log('Contraseña incorrecta para usuario', providedUser, 'stored:', JSON.stringify(storedPass), 'provided:', JSON.stringify(providedPass));
+    console.log('Intento de login fallido para usuario:', providedUser);
     return res.status(401).json({ ok: false, mensaje: 'Usuario o contraseña incorrectos' });
   }
 
