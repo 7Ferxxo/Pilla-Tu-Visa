@@ -8,6 +8,18 @@
     <link rel="shortcut icon" type="image/png" href="/imagenes/logo.png?v=1">
     <link rel="apple-touch-icon" href="/imagenes/logo.png?v=1">
     <link rel="stylesheet" href="styles.css">
+        <script>
+            (function () {
+                try {
+                    const token = window.localStorage.getItem('ptv_token');
+                    if (!token) {
+                        window.location.replace('/login/index.html');
+                    }
+                } catch (err) {
+                    window.location.replace('/login/index.html');
+                }
+            })();
+        </script>
 </head>
 <body>
     <div class="container">
@@ -20,7 +32,8 @@
             <button type="button" class="tab tab--active" data-view="nuevo">Nuevo Cliente</button>
             <button type="button" class="tab" data-view="tips">Enviar Tips + IA</button>
             <button type="button" class="tab" data-view="resultado">Resultado</button>
-            <a class="tab tab-link" href="/cajaderecibos.html">Recibos</a>
+            <button type="button" class="tab" data-view="potenciales">Potenciales</button>
+            <a class="tab tab-link" href="/caja-de-recibos/cajaderecibos.html">Recibos</a>
         </nav>
 
         <section class="card" data-section="nuevo">
@@ -142,6 +155,37 @@
             </form>
 
             <div id="resultadoStatus" class="mensaje-oculto" role="status" aria-live="polite"></div>
+        </section>
+
+        <section class="card is-hidden" data-section="potenciales">
+            <h2 class="card-title">Clientes Potenciales</h2>
+
+            <p class="card-subtitle">Personas que dejaron sus datos desde la página de login para recibir asesoría.</p>
+
+            <div class="potenciales-header">
+                <button type="button" id="btnRecargarPotenciales" class="btn-secondary">Actualizar lista</button>
+                <span id="potencialesStatus" class="mensaje-inline" aria-live="polite"></span>
+            </div>
+
+            <div class="table-wrapper">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Email</th>
+                            <th>Teléfono</th>
+                            <th>Estado</th>
+                            <th>Fecha</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="potencialesBody">
+                        <tr>
+                            <td colspan="6" class="table-empty">No hay clientes potenciales registrados todavía.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </section>
 
 

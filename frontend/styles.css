@@ -164,6 +164,12 @@ body {
     font-weight: 700;
 }
 
+.card-subtitle {
+    margin: -10px 0 18px;
+    font-size: 13px;
+    color: #6b7280;
+}
+
 .registro-form {
     display: grid;
     gap: 18px;
@@ -255,6 +261,121 @@ body {
     background-color: #fce8e6;
     color: #d93025;
     border-left: 5px solid #ea4335;
+}
+
+.btn-secondary {
+    background-color: #111827;
+    color: #ffffff;
+    padding: 10px 14px;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.btn-secondary:hover:not([disabled]) {
+    background-color: #030712;
+}
+
+.potenciales-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.mensaje-inline {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.mensaje-inline.is-error {
+    color: #b91c1c;
+}
+
+.mensaje-inline.is-ok {
+    color: #15803d;
+}
+
+.table-wrapper {
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.table thead {
+    background-color: #f9fafb;
+}
+
+.table th,
+.table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #e5e7eb;
+    text-align: left;
+    vertical-align: top;
+}
+
+.table th {
+    font-weight: 700;
+    color: #4b5563;
+}
+
+.table tbody tr:nth-child(even) {
+    background-color: #f9fafb;
+}
+
+.table-empty {
+    text-align: center;
+    color: #9ca3af;
+}
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.status-nuevo {
+    background-color: #eff6ff;
+    color: #1d4ed8;
+}
+
+.status-contactado {
+    background-color: #ecfdf3;
+    color: #15803d;
+}
+
+.status-descartado {
+    background-color: #fef2f2;
+    color: #b91c1c;
+}
+
+.btn-table {
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: none;
+    background-color: #111827;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.btn-table[disabled] {
+    opacity: 0.6;
+    cursor: default;
 }
 
 @media (max-width: 720px) {

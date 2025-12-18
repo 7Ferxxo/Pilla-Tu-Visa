@@ -6,6 +6,7 @@ const fs = require('fs');
 const db = require('./db');
 const ai = require('./ai');
 const emailService = require('./email');
+const jwt = require('jsonwebtoken');
 
 const RECEIPTS_DIR = path.join(__dirname, 'storage', 'recibos');
 const RECEIPT_TEMPLATE_PATH = path.join(__dirname, 'templates', 'recibo.html');
@@ -84,6 +85,60 @@ async function readReceiptMeta(reciboId) {
   }
 }
 
+function getAdminPassword() {
+  return String(process.env.ADMIN_PASSWORD || '').trim();
+}
+
+function parseExtraAdmins() {
+  const raw = String(process.env.ADMIN_USERS || '').trim();
+  if (!raw) return [];
+  return raw.split(',').map((entry) => {
+    const parts = entry.split(':').map((p) => String(p || '').trim());
+    const username = parts[0];
+    const password = parts[1];
+    const role = parts[2] || 'admin';
+    if (!username || !password) return null;
+    return { username, password, role };
+  }).filter(Boolean);
+}
+
+function getAuthUsers() {
+  const users = [];
+  const adminPass = getAdminPassword();
+  if (adminPass) {
+    users.push({ username: 'admin', password: adminPass, role: 'admin' });
+  }
+  const extras = parseExtraAdmins();
+  return users.concat(extras);
+}
+
+function hasAuthConfig() {
+  return Boolean(String(process.env.JWT_SECRET || '').trim() && getAuthUsers().length > 0);
+}
+
+function verificarToken(req, res, next) {
+  if (!hasAuthConfig()) {
+    return res.status(503).json({ ok: false, mensaje: 'Auth no configurado en backend/.env' });
+  }
+
+  const authHeader = req.headers['authorization'] || req.headers['Authorization'];
+  const token = authHeader && String(authHeader).startsWith('Bearer ')
+    ? String(authHeader).slice('Bearer '.length).trim()
+    : null;
+
+  if (!token) {
+    return res.status(401).json({ ok: false, mensaje: 'Token de autenticación faltante' });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ ok: false, mensaje: 'Token inválido o expirado' });
+    }
+    req.user = user;
+    next();
+  });
+}
+
 const app = express();
 
 app.use(cors());
@@ -101,8 +156,150 @@ app.get('/', (req, res) => {
   res.send('Pilla Tu Visa API funcionando 🚀');
 });
 
+app.post('/api/login', (req, res) => {
+  if (!hasAuthConfig()) {
+    return res.status(503).json({ ok: false, mensaje: 'Falta JWT_SECRET o ADMIN_PASSWORD/ADMIN_USERS en backend/.env' });
+  }
+
+  const { username, password } = req.body || {};
+  const providedUser = String(username || '').trim();
+  const providedPass = String(password || '').trim();
+
+  if (!providedUser || !providedPass) {
+    return res.status(400).json({ ok: false, mensaje: 'Faltan credenciales' });
+  }
+
+  const users = getAuthUsers();
+  const found = users.find((u) => u.username.toLowerCase() === providedUser.toLowerCase());
+  console.log('Intento de login:', providedUser, 'usuarios disponibles:', users.map((u) => u.username));
+  if (!found) {
+    return res.status(401).json({ ok: false, mensaje: 'Usuario o contraseña incorrectos' });
+  }
+
+  const storedPass = String(found.password || '').trim();
+  if (storedPass !== providedPass) {
+    console.log('Intento de login fallido para usuario:', providedUser);
+    return res.status(401).json({ ok: false, mensaje: 'Usuario o contraseña incorrectos' });
+  }
+
+  const role = found.role || 'admin';
+  const token = jwt.sign({ role, username: found.username }, process.env.JWT_SECRET, { expiresIn: '2h' });
+  res.json({ ok: true, token, role, username: found.username, mensaje: 'Login correcto' });
+});
+
+app.post('/api/potenciales', async (req, res) => {
+  const { nombre, email: emailAddress, telefono, mensaje } = req.body || {};
+
+  const safeNombre = String(nombre || '').trim();
+  const safeEmail = String(emailAddress || '').trim();
+  const safeTelefono = String(telefono || '').trim();
+  const safeMensaje = String(mensaje || '').trim();
+
+  if (!safeNombre || !safeEmail) {
+    return res.status(400).json({ ok: false, mensaje: 'Nombre y email son obligatorios.' });
+  }
+
+  try {
+    const sql = `
+      INSERT INTO potenciales_clientes (nombre, email, telefono, mensaje, estado)
+      VALUES (?, ?, ?, ?, ?)
+    `;
+
+    const [result] = await db.pool.execute(sql, [
+      safeNombre,
+      safeEmail,
+      safeTelefono,
+      safeMensaje,
+      'nuevo',
+    ]);
+
+    const potencialId = result.insertId;
+
+    let emailSent = false;
+    let emailError = null;
+    try {
+      if (!emailService.hasEmailConfig()) {
+        emailError = 'EMAIL_USER/EMAIL_PASS no configurados. No se envió correo.';
+      } else {
+        await emailService.sendLeadNotification({
+          nombre: safeNombre,
+          email: safeEmail,
+          telefono: safeTelefono,
+          mensaje: safeMensaje,
+        });
+        emailSent = true;
+      }
+    } catch (err) {
+      emailError = 'No se pudo enviar la notificación por correo.';
+      console.error('Error enviando email de cliente potencial:', err);
+    }
+
+    res.status(201).json({
+      ok: true,
+      mensaje: 'Hemos recibido tu solicitud, te contactaremos muy pronto.',
+      potencialId,
+      emailSent,
+      emailError,
+    });
+  } catch (error) {
+    console.error('Error al guardar cliente potencial:', error);
+    res.status(500).json({ ok: false, mensaje: 'Error al guardar tus datos. Inténtalo más tarde.' });
+  }
+});
+
+app.get('/api/potenciales', verificarToken, async (req, res) => {
+  try {
+    const [rows] = await db.pool.query(
+      'SELECT id, nombre, email, telefono, mensaje, creado_en, estado FROM potenciales_clientes ORDER BY creado_en DESC LIMIT 200'
+    );
+    res.json({ ok: true, items: rows || [] });
+  } catch (error) {
+    console.error('Error al listar clientes potenciales:', error);
+    res.status(500).json({ ok: false, mensaje: 'Error al cargar clientes potenciales' });
+  }
+});
+
+app.post('/api/potenciales/:id/estado', verificarToken, async (req, res) => {
+  const id = Number(req.params.id);
+  const { estado } = req.body || {};
+
+  const safeEstado = String(estado || '').trim().toLowerCase();
+  const allowed = {
+    nuevo: 'nuevo',
+    contactado: 'contactado',
+    descartado: 'descartado',
+  };
+
+  const finalEstado = allowed[safeEstado];
+
+  if (!Number.isInteger(id) || !finalEstado) {
+    return res.status(400).json({ ok: false, mensaje: 'Datos inválidos para actualizar estado.' });
+  }
+
+  try {
+    const [result] = await db.pool.execute(
+      'UPDATE potenciales_clientes SET estado = ? WHERE id = ? LIMIT 1',
+      [finalEstado, id]
+    );
+
+    const affected = result && typeof result.affectedRows === 'number' ? result.affectedRows : 0;
+    if (!affected) {
+      return res.status(404).json({ ok: false, mensaje: 'Cliente potencial no encontrado.' });
+    }
+
+    res.json({ ok: true, mensaje: 'Estado actualizado correctamente.', id, estado: finalEstado });
+  } catch (error) {
+    console.error('Error al actualizar estado de cliente potencial:', error);
+    res.status(500).json({ ok: false, mensaje: 'Error al actualizar el estado.' });
+  }
+});
+
 app.get('/register', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html'));
+});
+
+app.get('/cajaderecibos.html', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'frontend', 'caja-de-recibos', 'cajaderecibos.html'));
 });
 
 app.get('/clients', async (req, res) => {
@@ -167,33 +364,6 @@ app.post('/ai/resultado', async (req, res) => {
   }
 });
 
-app.post('/email/test', async (req, res) => {
-  try {
-    if (!emailService.hasEmailConfig()) {
-      return res.status(400).json({
-        ok: false,
-        mensaje: 'Falta configurar EMAIL_USER y EMAIL_PASS en backend/.env',
-      });
-    }
-
-    const { to } = req.body || {};
-    const host = req.get('host');
-    const proto = req.protocol;
-    const baseUrl = `${proto}://${host}`;
-
-    const info = await emailService.sendTestEmail({ to, baseUrl });
-    res.json({ ok: true, mensaje: 'Correo de prueba enviado', messageId: info && info.messageId });
-  } catch (error) {
-    console.error('Error enviando correo de prueba:', error);
-    res.status(500).json({
-      ok: false,
-      mensaje: 'No se pudo enviar el correo de prueba',
-      code: error && error.code ? String(error.code) : undefined,
-      error: error && error.message ? String(error.message) : String(error),
-    });
-  }
-});
-
 app.get('/recibo/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
@@ -250,7 +420,7 @@ app.get('/recibo/:id', async (req, res) => {
   }
 });
 
-app.get('/recibos', async (req, res) => {
+app.get('/recibos', verificarToken, async (req, res) => {
   const limitRaw = Number(req.query.limit ?? 200);
   const limit = Number.isInteger(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
 
@@ -276,7 +446,7 @@ app.get('/recibos', async (req, res) => {
   }
 });
 
-app.delete('/recibos/:id', async (req, res) => {
+app.delete('/recibos/:id', verificarToken, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ ok: false, mensaje: 'ID inválido' });
@@ -351,13 +521,14 @@ app.post('/register', async (req, res) => {
 
     const notasText = String(notas ?? '').trim();
 
+    const fechaEmision = formatDateDMY(new Date());
+    const montoFmt = formatMoney(monto);
+
     let receiptHtml = null;
     let receiptSaved = false;
     let receiptSaveError = null;
     try {
       const template = getReceiptTemplate();
-      const fechaEmision = formatDateDMY(new Date());
-      const montoFmt = formatMoney(monto);
 
       receiptHtml = renderTemplate(template, {
         id: escapeHtml(reciboId),
@@ -394,8 +565,6 @@ app.post('/register', async (req, res) => {
         const baseUrl = `${proto}://${host}`;
         const reciboUrl = `${baseUrl}/recibo/${reciboId}`;
 
-        const montoFmt = formatMoney(monto);
-
         await emailService.sendReceiptEmail({
           to: emailAddress,
           clienteNombre: nombre,
@@ -406,6 +575,8 @@ app.post('/register', async (req, res) => {
           reciboUrl,
           receiptHtml,
           baseUrl,
+          fechaEmision,
+          clienteEmail: emailAddress,
         });
 
         emailSent = true;

@@ -1,4 +1,14 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const TOKEN_KEY = 'ptv_token';
+    const getAuthHeaders = () => {
+        try {
+            const token = window.localStorage.getItem(TOKEN_KEY);
+            return token ? { Authorization: `Bearer ${token}` } : {};
+        } catch {
+            return {};
+        }
+    };
+
     const form = document.getElementById('registroForm');
     const mensajeDiv = document.getElementById('mensaje');
     const submitBtn = document.getElementById('btn-submit');
@@ -24,6 +34,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultadoMensaje = document.getElementById('resultadoMensaje');
     const btnRedactar = document.getElementById('btnRedactar');
     const btnNotificar = document.getElementById('btnNotificar');
+
+    const potencialesBody = document.getElementById('potencialesBody');
+    const potencialesStatus = document.getElementById('potencialesStatus');
+    const btnRecargarPotenciales = document.getElementById('btnRecargarPotenciales');
 
     const segmentedButtons = Array.from(document.querySelectorAll('.segmented-btn[data-estado]'));
     
@@ -91,6 +105,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const showView = (view) => {
         tabs.forEach((t) => t.classList.toggle('tab--active', t.dataset.view === view));
         sections.forEach((s) => s.classList.toggle('is-hidden', s.dataset.section !== view));
+
+        if (view === 'potenciales') {
+            loadPotenciales();
+        }
     };
 
     tabs.forEach((t) => {
@@ -121,6 +139,115 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    const renderPotenciales = (items) => {
+        if (!potencialesBody) return;
+        potencialesBody.innerHTML = '';
+        if (!items || !items.length) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 6;
+            td.className = 'table-empty';
+            td.textContent = 'No hay clientes potenciales registrados todavía.';
+            tr.appendChild(td);
+            potencialesBody.appendChild(tr);
+            return;
+        }
+
+        items.forEach((p) => {
+            const tr = document.createElement('tr');
+            const fecha = p.creado_en ? new Date(p.creado_en).toLocaleString() : '';
+            const estadoRaw = (p.estado || 'nuevo').toLowerCase();
+            const estadoKey = ['contactado', 'descartado'].includes(estadoRaw) ? estadoRaw : 'nuevo';
+            const estadoText = estadoKey === 'contactado' ? 'Contactado' : estadoKey === 'descartado' ? 'Descartado' : 'Nuevo';
+
+            const tdNombre = document.createElement('td');
+            tdNombre.textContent = p.nombre || '-';
+            tr.appendChild(tdNombre);
+
+            const tdEmail = document.createElement('td');
+            tdEmail.textContent = p.email || '-';
+            tr.appendChild(tdEmail);
+
+            const tdTel = document.createElement('td');
+            tdTel.textContent = p.telefono || '-';
+            tr.appendChild(tdTel);
+
+            const tdEstado = document.createElement('td');
+            const spanEstado = document.createElement('span');
+            spanEstado.className = `status-pill status-${estadoKey}`;
+            spanEstado.textContent = estadoText;
+            tdEstado.appendChild(spanEstado);
+            tr.appendChild(tdEstado);
+
+            const tdFecha = document.createElement('td');
+            tdFecha.textContent = fecha;
+            tr.appendChild(tdFecha);
+
+            const tdAccion = document.createElement('td');
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn-table';
+            btn.textContent = estadoKey === 'contactado' ? 'Contactado' : 'Marcar contactado';
+            btn.disabled = estadoKey === 'contactado';
+            btn.addEventListener('click', async () => {
+                try {
+                    setPotencialesStatus('Actualizando estado...', null);
+                    const resp = await fetch(`/api/potenciales/${p.id}/estado`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...getAuthHeaders(),
+                        },
+                        body: JSON.stringify({ estado: 'contactado' }),
+                    });
+                    const data = await resp.json().catch(() => ({}));
+                    if (!resp.ok || !data.ok) {
+                        throw new Error(data.mensaje || 'No se pudo actualizar el estado');
+                    }
+                    await loadPotenciales();
+                    setPotencialesStatus('Estado actualizado.', 'ok');
+                } catch (err) {
+                    setPotencialesStatus(err && err.message ? err.message : 'Error al actualizar el estado.', 'error');
+                }
+            });
+            tdAccion.appendChild(btn);
+            tr.appendChild(tdAccion);
+
+            potencialesBody.appendChild(tr);
+        });
+    };
+
+    const setPotencialesStatus = (text, type) => {
+        if (!potencialesStatus) return;
+        potencialesStatus.textContent = text || '';
+        potencialesStatus.classList.remove('is-ok', 'is-error');
+        if (type) {
+            potencialesStatus.classList.add(type === 'error' ? 'is-error' : 'is-ok');
+        }
+    };
+
+    const loadPotenciales = async () => {
+        if (!potencialesBody) return;
+        setPotencialesStatus('Cargando...', null);
+        try {
+            const resp = await fetch('/api/potenciales', {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...getAuthHeaders(),
+                },
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || !data.ok) {
+                throw new Error(data.mensaje || 'No se pudieron cargar los clientes potenciales');
+            }
+            renderPotenciales(data.items || []);
+            setPotencialesStatus(`Total: ${(data.items || []).length}`, 'ok');
+        } catch (err) {
+            renderPotenciales([]);
+            setPotencialesStatus(err && err.message ? err.message : 'Error al cargar la lista.', 'error');
+        }
+    };
+
     const setEstado = (estado) => {
         estadoInput.value = estado;
         segmentedButtons.forEach((b) => b.classList.toggle('is-active', b.dataset.estado === estado));
@@ -131,6 +258,12 @@ document.addEventListener('DOMContentLoaded', () => {
     segmentedButtons.forEach((b) => {
         b.addEventListener('click', () => setEstado(b.dataset.estado));
     });
+
+    if (btnRecargarPotenciales) {
+        btnRecargarPotenciales.addEventListener('click', () => {
+            loadPotenciales();
+        });
+    }
 
     btnGenerar.addEventListener('click', () => {
         const perfil = (perfilCliente.value || '').trim();
