@@ -29,7 +29,7 @@ const hideError = () => {
 };
 
 const redirectToHome = () => {
-  window.location.href = '/register';
+  window.location.href = '/';
 };
 
 const saveSession = ({ token, role, username }) => {
