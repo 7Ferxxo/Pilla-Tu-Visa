@@ -7,84 +7,61 @@
   <link rel="icon" type="image/png" href="/imagenes/logo.png?v=1" />
   <link rel="shortcut icon" type="image/png" href="/imagenes/logo.png?v=1" />
   <link rel="apple-touch-icon" href="/imagenes/logo.png?v=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Red+Hat+Display:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="login.css" />
 </head>
 <body>
-  <button type="button" id="loginMenuToggle" class="login-menu-toggle" aria-label="Abrir panel de acceso" aria-controls="loginPanel" aria-expanded="false">
-    <span class="menu-bar"></span>
-    <span class="menu-bar"></span>
-    <span class="menu-bar"></span>
-  </button>
-
-  <main class="login-shell">
-    <section class="login-hero" aria-labelledby="hero-title">
-      <div class="hero-content">
-        <div class="hero-brand" aria-label="Pilla Tu Visa">
-          <img src="/imagenes/logo.png" alt="Pilla Tu Visa" class="hero-brand-logo" />
-          <span class="hero-subtitle">Acompañamiento experto para casos negados</span>
-        </div>
+  <main class="login-layout">
+    <section class="hero-panel" aria-labelledby="hero-title">
+      <div class="hero-top">
+        <img class="hero-brand-logo" src="/imagenes/Pilla%20Tu%20Visa.png" alt="Pilla tu Visa" />
         <h1 id="hero-title">¿Tu visa fue negada?</h1>
-        <p class="hero-lead">Te guiamos paso a paso para que tengas más oportunidades en tu próxima entrevista y aproveches mejor tu tiempo y dinero.</p>
-        <ul class="hero-points">
-          <li>Revisamos tu caso y documentos clave</li>
-          <li>Te damos estrategias para nuevas entrevistas</li>
-          <li>Te mantenemos al tanto de cambios en visados</li>
-        </ul>
-
-        <p class="hero-lead-link">
-          ¿Quieres que revisemos tu caso? 
-          <a id="leadLinkHero" href="#lead-section" class="link lead-link">Déjanos tus datos aquí</a>
-          y te escribimos por WhatsApp.
-        </p>
-
-        <button type="button" id="openLogin" class="btn-secondary hero-cta-secondary">
-          Ya soy cliente, iniciar sesión
-        </button>
+        <p class="hero-copy">Revisamos tu caso, preparamos tus documentos y te acompañamos para que tu próxima cita consular sea más sólida y segura.</p>
       </div>
-      <div class="hero-graphic" aria-hidden="true">
-        <div class="graphic-clock">
-          <span class="clock-hand clock-hand--short"></span>
-          <span class="clock-hand clock-hand--long"></span>
-        </div>
-        <div class="graphic-box"></div>
-        <div class="graphic-avatar"></div>
+
+      <ul class="hero-list" aria-label="Beneficios principales">
+        <li><span>Analizamos tus documentos clave y cartas de apoyo</span></li>
+        <li><span>Te damos estrategias concretas para tu próxima entrevista</span></li>
+        <li><span>Te avisamos de cambios y te contactamos por WhatsApp</span></li>
+      </ul>
+
+      <div class="hero-cta-group">
+        <button type="button" id="heroLeadBtn" class="hero-cta-btn">Quiero que revisen mi caso</button>
+        <p class="hero-cta-note">Te escribimos por WhatsApp en Menos de 24 horas.</p>
       </div>
     </section>
 
-    <section id="loginPanel" class="login-panel" aria-label="Formulario de acceso" data-state="closed">
-      <div class="panel-logo">
+    <section class="login-card" aria-label="Formulario de acceso">
+      <div class="login-card__header">
         <img src="/imagenes/logo.png" alt="Logo Pilla Tu Visa" />
+        <div>
+          <h2>Inicia sesión</h2>
+          <p class="card-eyebrow">Solo personal autorizado puede ingresar.</p>
+        </div>
       </div>
 
-      <div class="panel-top-row">
-        <button type="button" class="btn-link back-home" onclick="window.location.href='/'">
-          Volver al inicio
-        </button>
-      </div>
-
-      <header class="panel-head">
-        <h2>Accede a tu cuenta</h2>
-        <p>Solo personal autorizado puede ingresar.</p>
-      </header>
-
-      <form id="loginForm" class="panel-form" novalidate>
+      <form id="loginForm" class="login-form" novalidate>
         <label class="field">
           <span>Email o usuario</span>
-          <input type="text" id="username" name="username" placeholder="ej: admin" required autocomplete="username" />
+          <input type="text" id="username" name="username" placeholder="ej: Juan Perez" required autocomplete="username" />
         </label>
 
         <label class="field">
           <span>Contraseña</span>
           <div class="password-field">
             <input type="password" id="password" name="password" placeholder="********" required autocomplete="current-password" />
-            <button type="button" id="togglePassword" class="btn-icon" aria-label="Mostrar u ocultar contraseña">
-              👁️
+            <button type="button" id="togglePassword" class="password-toggle" aria-label="Mostrar contraseña" aria-pressed="false">
+              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path fill="currentColor" d="M12 5c-5 0-9 5-9 7s4 7 9 7 9-5 9-7-4-7-9-7Zm0 12c-2.8 0-5-2.2-5-5s2.2-5 5-5 5 2.2 5 5-2.2 5-5 5Zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/>
+              </svg>
             </button>
           </div>
         </label>
 
-        <div class="panel-links">
-          <a href="mailto:soporte@pillatuvisa.com?subject=Recuperar%20acceso" class="link">Recuperar contraseña</a>
+        <div class="form-links">
+          <a href="mailto:soporte@pillatuvisa.com?subject=Recuperar%20acceso">Recuperar contraseña</a>
         </div>
 
         <button type="submit" class="btn-primary">Acceder</button>
@@ -92,39 +69,40 @@
 
       <p id="mensajeError" class="form-error" aria-live="polite"></p>
 
-      <p class="register-note">
-        ¿No tienes una cuenta? <a href="mailto:soporte@pillatuvisa.com?subject=Solicitud%20de%20acceso" class="link">Solicita acceso</a>
-      </p>
+      <div class="card-footer">
+        <p>¿No tienes una cuenta? <a href="mailto:soporte@pillatuvisa.com?subject=Solicitud%20de%20acceso" class="footer-link">Solicita acceso</a></p>
+      </div>
     </section>
   </main>
 
   <section id="lead-section" class="lead-section" aria-labelledby="lead-title">
     <div class="lead-card">
-      <h2 id="lead-title" class="lead-title">Solicita una asesoría personalizada</h2>
-      <p class="lead-intro">Déjanos tus datos y un breve resumen de tu caso. Un asesor te contactará desde Panamá para revisar contigo los siguientes pasos.</p>
+      <div class="lead-card__intro">
+        <p class="lead-kicker">¿Quieres que revisemos tu caso?</p>
+        <h2 id="lead-title">Déjanos tus datos aquí y te escribimos por WhatsApp</h2>
+        <p class="lead-copy">Nuestro equipo revisa tu situación, analiza los documentos clave y te contacta con los siguientes pasos. Cuéntanos brevemente qué ocurrió y te guiamos.</p>
+      </div>
 
       <form id="leadForm" class="lead-form" novalidate>
         <div class="lead-grid">
-          <label class="field lead-field">
+          <label class="lead-field">
             <span>Nombre completo</span>
             <input type="text" id="leadNombre" name="nombre" placeholder="Ej: Carlos Pérez" required />
           </label>
-          <label class="field lead-field">
+          <label class="lead-field">
             <span>Email</span>
             <input type="email" id="leadEmail" name="email" placeholder="ejemplo@correo.com" required />
           </label>
         </div>
-        <label class="field lead-field">
+        <label class="lead-field">
           <span>Teléfono o WhatsApp (Panamá)</span>
           <input type="tel" id="leadTelefono" name="telefono" placeholder="Ej: +507 6000-0000" />
         </label>
-        <label class="field lead-field">
+        <label class="lead-field">
           <span>Cuéntanos brevemente tu situación</span>
           <textarea id="leadMensaje" name="mensaje" rows="3" placeholder="Ej: Me negaron la visa B1/B2 y quiero preparar mejor mi próxima entrevista"></textarea>
         </label>
-        <button type="submit" class="btn-primary lead-submit">
-          Enviar mis datos
-        </button>
+        <button type="submit" class="btn-primary lead-submit">Enviar mis datos</button>
         <p id="leadStatus" class="lead-status" aria-live="polite"></p>
       </form>
     </div>

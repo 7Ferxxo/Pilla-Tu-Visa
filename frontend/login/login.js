@@ -43,7 +43,8 @@ const togglePasswordVisibility = () => {
   if (!input || !btn) return;
   const isHidden = input.type === 'password';
   input.type = isHidden ? 'text' : 'password';
-  btn.textContent = isHidden ? 'Ocultar' : 'Ver';
+  btn.setAttribute('aria-pressed', String(isHidden));
+  btn.setAttribute('aria-label', isHidden ? 'Ocultar contraseña' : 'Mostrar contraseña');
 };
 
 const showLeadStatus = (message, type = 'ok') => {
@@ -53,39 +54,6 @@ const showLeadStatus = (message, type = 'ok') => {
   el.classList.remove('is-ok', 'is-error');
   el.classList.add(type === 'error' ? 'is-error' : 'is-ok');
 };
-
-const leadForm = document.getElementById('leadForm');
-if (leadForm) {
-  leadForm.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    const nombre = document.getElementById('leadNombre')?.value.trim();
-    const email = document.getElementById('leadEmail')?.value.trim();
-    const telefono = document.getElementById('leadTelefono')?.value.trim();
-    const mensaje = document.getElementById('leadMensaje')?.value.trim();
-
-    if (!nombre || !email) {
-      showLeadStatus('Por favor ingresa al menos tu nombre y email.', 'error');
-      return;
-    }
-
-    try {
-      showLeadStatus('Enviando tus datos, un momento...', 'ok');
-      const resp = await fetch('/api/potenciales', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nombre, email, telefono, mensaje }),
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok || !data.ok) {
-        throw new Error(data.mensaje || 'No se pudo enviar tu solicitud.');
-      }
-      showLeadStatus(data.mensaje || 'Hemos recibido tu solicitud, te contactaremos pronto.', 'ok');
-      leadForm.reset();
-    } catch (error) {
-      showLeadStatus(error && error.message ? error.message : 'Ocurrió un error al enviar tus datos.', 'error');
-    }
-  });
-}
 
 if (localStorage.getItem(TOKEN_KEY)) {
   redirectToHome();
@@ -122,51 +90,44 @@ if (toggleBtn) {
   });
 }
 
-const loginPanel = document.getElementById('loginPanel');
-const openLoginBtn = document.getElementById('openLogin');
-const loginMenuToggle = document.getElementById('loginMenuToggle');
-const leadLinkHero = document.getElementById('leadLinkHero');
-
-const syncPanelState = (isOpen) => {
-  if (!loginPanel) return;
-  loginPanel.setAttribute('data-state', isOpen ? 'open' : 'closed');
-  document.body.classList.toggle('login-panel-open', isOpen);
-  if (loginMenuToggle) {
-    loginMenuToggle.classList.toggle('is-active', isOpen);
-    loginMenuToggle.setAttribute('aria-expanded', String(isOpen));
-  }
-};
-
-const openLoginPanel = () => syncPanelState(true);
-const closeLoginPanel = () => syncPanelState(false);
-const toggleLoginPanel = () => {
-  if (!loginPanel) return;
-  const isOpen = loginPanel.getAttribute('data-state') === 'open';
-  syncPanelState(!isOpen);
-};
-
-if (openLoginBtn) {
-  openLoginBtn.addEventListener('click', (ev) => {
+const leadForm = document.getElementById('leadForm');
+if (leadForm) {
+  leadForm.addEventListener('submit', async (ev) => {
     ev.preventDefault();
-    openLoginPanel();
+    const nombre = document.getElementById('leadNombre')?.value.trim();
+    const email = document.getElementById('leadEmail')?.value.trim();
+    const telefono = document.getElementById('leadTelefono')?.value.trim();
+    const mensaje = document.getElementById('leadMensaje')?.value.trim();
+
+    if (!nombre || !email) {
+      showLeadStatus('Por favor ingresa al menos tu nombre y email.', 'error');
+      return;
+    }
+
+    try {
+      showLeadStatus('Enviando tus datos, un momento...', 'ok');
+      const resp = await fetch('/api/potenciales', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre, email, telefono, mensaje }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) {
+        throw new Error(data.mensaje || 'No se pudo enviar tu solicitud.');
+      }
+      showLeadStatus(data.mensaje || 'Hemos recibido tu solicitud, te contactaremos pronto.', 'ok');
+      leadForm.reset();
+    } catch (error) {
+      showLeadStatus(error?.message || 'Ocurrió un error al enviar tus datos.', 'error');
+    }
   });
 }
 
-if (loginMenuToggle) {
-  loginMenuToggle.addEventListener('click', (ev) => {
+const heroLeadBtn = document.getElementById('heroLeadBtn');
+const leadSection = document.getElementById('lead-section');
+if (heroLeadBtn && leadSection) {
+  heroLeadBtn.addEventListener('click', (ev) => {
     ev.preventDefault();
-    toggleLoginPanel();
+    leadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 }
-
-if (leadLinkHero) {
-  leadLinkHero.addEventListener('click', () => {
-    closeLoginPanel();
-  });
-}
-
-document.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape') {
-    closeLoginPanel();
-  }
-});
