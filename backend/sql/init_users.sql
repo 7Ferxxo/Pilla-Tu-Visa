@@ -1,0 +1,16 @@
+CREATE TABLE IF NOT EXISTS usuarios (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  username VARCHAR(50) NOT NULL UNIQUE,
+  email VARCHAR(120) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  role ENUM('admin', 'editor', 'viewer') NOT NULL DEFAULT 'admin',
+  reset_token VARCHAR(255) DEFAULT NULL,
+  reset_expires DATETIME DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO usuarios (username, email, password_hash, role)
+VALUES ('admin', 'admin@pillatuvisa.com', '$2b$12$IcobK/3zX1hm8XD98rGL4uVJNJb1ALLyMvf9Cn3r3uTCmsBt89JJW', 'admin')
+ON DUPLICATE KEY UPDATE email = VALUES(email);

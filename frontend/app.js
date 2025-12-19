@@ -3,6 +3,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const mensajeDiv = document.getElementById('mensaje');
     const submitBtn = document.getElementById('btn-submit');
 
+    const TOKEN_KEY = 'ptv_token';
+    const USER_KEY = 'ptv_user';
+    const getAuthHeader = () => {
+        const token = localStorage.getItem(TOKEN_KEY);
+        return token ? { Authorization: `Bearer ${token}` } : {};
+    };
+
+    const redirectToLoginIfUnauthorized = (resp) => {
+        if (resp && resp.status === 401) {
+            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem(USER_KEY);
+            window.location.href = '/login/';
+            return true;
+        }
+        return false;
+    };
+
     const tabs = Array.from(document.querySelectorAll('.tab[data-view]'));
     const sections = Array.from(document.querySelectorAll('[data-section]'));
 
@@ -54,10 +71,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/register', {
                 method: 'POST', 
                 headers: {
-                    'Content-Type': 'application/json' 
+                    'Content-Type': 'application/json',
+                    ...getAuthHeader(),
                 },
                 body: JSON.stringify(data) 
             });
+
+            if (redirectToLoginIfUnauthorized(response)) return;
 
             const result = await response.json();
 
@@ -112,7 +132,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const loadClients = async () => {
         try {
-            const resp = await fetch('/clients');
+            const resp = await fetch('/clients', {
+                headers: {
+                    ...getAuthHeader(),
+                },
+            });
+            if (redirectToLoginIfUnauthorized(resp)) return;
             const data = await resp.json();
             if (!resp.ok || !data.ok) return;
             fillClients(tipsCliente, data.clients || []);
@@ -156,10 +181,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         fetch('/ai/tips', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
             body: JSON.stringify({ perfil, fechaCita: fecha }),
         })
             .then(async (r) => {
+                if (redirectToLoginIfUnauthorized(r)) throw new Error('No autorizado');
                 const data = await r.json().catch(() => ({}));
                 if (!r.ok || !data.ok || !data.text) throw new Error(data.mensaje || 'Error');
                 tipsMensaje.value = data.text;
@@ -189,9 +215,10 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const resp = await fetch('/tips', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
                 body: JSON.stringify(payload),
             });
+            if (redirectToLoginIfUnauthorized(resp)) return;
             const data = await resp.json();
             if (resp.ok && !data.error) {
                 setStatus(tipsStatus, data.mensaje || 'Tips enviados correctamente', 'exito');
@@ -223,10 +250,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         fetch('/ai/resultado', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
             body: JSON.stringify({ estado, detalle: det }),
         })
             .then(async (r) => {
+                if (redirectToLoginIfUnauthorized(r)) throw new Error('No autorizado');
                 const data = await r.json().catch(() => ({}));
                 if (!r.ok || !data.ok || !data.text) throw new Error(data.mensaje || 'Error');
                 resultadoMensaje.value = data.text;
@@ -256,9 +284,10 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const resp = await fetch('/resultado', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
                 body: JSON.stringify(payload),
             });
+            if (redirectToLoginIfUnauthorized(resp)) return;
             const data = await resp.json();
             if (resp.ok && !data.error) {
                 setStatus(resultadoStatus, data.mensaje || 'Resultado notificado correctamente', 'exito');

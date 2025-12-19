@@ -3,6 +3,23 @@ document.addEventListener('DOMContentLoaded', () => {
   const bodyEl = document.getElementById('recibosBody');
   const btnRecargar = document.getElementById('btnRecargar');
 
+  const TOKEN_KEY = 'ptv_token';
+  const USER_KEY = 'ptv_user';
+  const getAuthHeader = () => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  const redirectToLoginIfUnauthorized = (resp) => {
+    if (resp && resp.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
+      window.location.href = '/login/';
+      return true;
+    }
+    return false;
+  };
+
   const setStatus = (texto, tipo) => {
     if (!statusEl) return;
     statusEl.textContent = texto;
@@ -78,7 +95,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setStatus(`Eliminando recibo #${id}...`, 'exito');
     try {
-      const resp = await fetch(`/recibos/${encodeURIComponent(String(id))}`, { method: 'DELETE' });
+      const resp = await fetch(`/recibos/${encodeURIComponent(String(id))}`, {
+        method: 'DELETE',
+        headers: {
+          ...getAuthHeader(),
+        },
+      });
+      if (redirectToLoginIfUnauthorized(resp)) return;
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok || !data.ok) throw new Error(data.mensaje || 'Error');
       setStatus(`Recibo #${id} eliminado.`, 'exito');
@@ -102,7 +125,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const load = async () => {
     setStatus('Cargando recibos...', 'exito');
     try {
-      const resp = await fetch('/recibos?limit=200');
+      const resp = await fetch('/recibos?limit=200', {
+        headers: {
+          ...getAuthHeader(),
+        },
+      });
+      if (redirectToLoginIfUnauthorized(resp)) return;
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok || !data.ok) throw new Error(data.mensaje || 'Error');
       clearStatus();

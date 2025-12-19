@@ -49,6 +49,18 @@ main.login-layout {
   align-items: center;
 }
 
+body[data-page="recover"] main.login-layout,
+body[data-page="reset"] main.login-layout {
+  grid-template-columns: 1fr;
+  justify-items: center;
+}
+
+body[data-page="recover"] .login-card,
+body[data-page="reset"] .login-card {
+  max-width: 560px;
+  width: 100%;
+}
+
 .hero-panel {
   padding: clamp(2rem, 4vw, 3rem);
   border-radius: var(--radius-xl);
@@ -274,6 +286,48 @@ main.login-layout {
   text-decoration: underline;
 }
 
+.link-button {
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.95rem;
+  font-family: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+.link-button:hover,
+.link-button:focus {
+  text-decoration: underline;
+}
+
+.recover-panel {
+  margin-top: 1rem;
+  padding: 1.25rem;
+  border-radius: 20px;
+  border: 1px solid #e4e7ec;
+  background: #f8fafc;
+  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  color: #0f172a;
+}
+
+.recover-panel p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.recover-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
 .btn-primary {
   margin-top: 0.5rem;
   border: none;
@@ -294,10 +348,42 @@ main.login-layout {
   box-shadow: 0 32px 55px rgba(239, 63, 76, 0.4);
 }
 
+.btn-secondary {
+  border: 1px solid #0f172a;
+  border-radius: var(--radius-pill);
+  background: #fff;
+  color: #0f172a;
+  font-weight: 700;
+  font-family: inherit;
+  padding: 0.85rem 1.4rem;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.btn-secondary:hover {
+  background: #0f172a;
+  color: #fff;
+}
+
 .form-error {
   min-height: 1.4rem;
   font-weight: 600;
   color: var(--accent);
+}
+
+.recover-status {
+  min-height: 1.25rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #0f172a;
+}
+
+.recover-status.is-error {
+  color: #b91c1c;
+}
+
+.recover-status.is-ok {
+  color: #15803d;
 }
 
 .card-footer {

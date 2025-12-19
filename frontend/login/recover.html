@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recuperar contraseña - Pilla Tu Visa</title>
+  <link rel="icon" type="image/png" href="/imagenes/logo.png?v=1" />
+  <link rel="shortcut icon" type="image/png" href="/imagenes/logo.png?v=1" />
+  <link rel="apple-touch-icon" href="/imagenes/logo.png?v=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Red+Hat+Display:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="login.css" />
+</head>
+<body data-page="recover">
+  <main class="login-layout">
+    <section class="login-card" aria-label="Formulario de recuperación">
+      <div class="login-card__header">
+        <img src="/imagenes/logo.png" alt="Logo Pilla Tu Visa" />
+        <div>
+          <h2>Recuperar contraseña</h2>
+          <p class="card-eyebrow">Te enviaremos instrucciones por correo.</p>
+        </div>
+      </div>
+
+      <form id="recoverForm" class="login-form" novalidate>
+        <label class="field">
+          <span>Correo registrado</span>
+          <input type="email" id="recoverEmail" name="recoverEmail" placeholder="ej: admin@pillatuvisa.com" required autocomplete="email" />
+        </label>
+
+        <button type="submit" class="btn-primary">Enviar instrucciones</button>
+      </form>
+
+      <p id="recoverStatus" class="recover-status" aria-live="polite"></p>
+
+      <div class="card-footer">
+        <p>¿Ya tienes tu contraseña? <a href="/login/" class="footer-link">Volver al login</a></p>
+      </div>
+    </section>
+  </main>
+
+  <script src="login.js"></script>
+</body>
+</html>

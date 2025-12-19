@@ -1,4 +1,4 @@
-node_modules
+# Intencionalmente minimal: el .gitignore principal (raíz) es el que manda.
 .env
 temp
 .DS_Store

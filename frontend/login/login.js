@@ -1,5 +1,9 @@
 const TOKEN_KEY = 'ptv_token';
 const USER_KEY = 'ptv_user';
+const currentPage = document.body?.dataset?.page || 'login';
+const isLoginPage = currentPage === 'login';
+const isRecoverPage = currentPage === 'recover';
+const isResetPage = currentPage === 'reset';
 
 const apiLogin = async (username, password) => {
   const resp = await fetch('/api/login', {
@@ -55,7 +59,27 @@ const showLeadStatus = (message, type = 'ok') => {
   el.classList.add(type === 'error' ? 'is-error' : 'is-ok');
 };
 
-if (localStorage.getItem(TOKEN_KEY)) {
+const showRecoverStatus = (message, type = 'ok') => {
+  const el = document.getElementById('recoverStatus');
+  if (!el) return;
+  el.textContent = message;
+  el.classList.remove('is-ok', 'is-error');
+  if (message) {
+    el.classList.add(type === 'error' ? 'is-error' : 'is-ok');
+  }
+};
+
+const showResetStatus = (message, type = 'ok') => {
+  const el = document.getElementById('resetStatus');
+  if (!el) return;
+  el.textContent = message;
+  el.classList.remove('is-ok', 'is-error');
+  if (message) {
+    el.classList.add(type === 'error' ? 'is-error' : 'is-ok');
+  }
+};
+
+if (isLoginPage && localStorage.getItem(TOKEN_KEY)) {
   redirectToHome();
 }
 
@@ -129,5 +153,100 @@ if (heroLeadBtn && leadSection) {
   heroLeadBtn.addEventListener('click', (ev) => {
     ev.preventDefault();
     leadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
+const recoverForm = document.getElementById('recoverForm');
+if (recoverForm) {
+  recoverForm.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const emailInput = document.getElementById('recoverEmail');
+    const email = emailInput ? emailInput.value.trim() : '';
+    if (!email) {
+      showRecoverStatus('Escribe el correo registrado.', 'error');
+      return;
+    }
+
+    try {
+      showRecoverStatus('Enviando instrucciones...', 'ok');
+      const resp = await fetch('/api/recover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) {
+        throw new Error(data.mensaje || 'No se pudo procesar tu solicitud.');
+      }
+      showRecoverStatus(data.mensaje || 'Si tu correo está registrado, te enviamos un enlace.', 'ok');
+      recoverForm.reset();
+      if (isRecoverPage) {
+        setTimeout(() => {
+          window.location.href = '/login/';
+        }, 2500);
+      }
+    } catch (error) {
+      showRecoverStatus(error?.message || 'Ocurrió un error al enviar el correo.', 'error');
+    }
+  });
+}
+
+const resetForm = document.getElementById('resetForm');
+if (resetForm && isResetPage) {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('token');
+  const tokenInput = document.getElementById('resetToken');
+
+  const disableResetForm = () => {
+    resetForm.querySelectorAll('input, button').forEach((el) => {
+      el.setAttribute('disabled', 'disabled');
+    });
+  };
+
+  if (!token) {
+    showResetStatus('El enlace no es válido. Solicita uno nuevo desde la página de login.', 'error');
+    disableResetForm();
+  } else if (tokenInput) {
+    tokenInput.value = token;
+  }
+
+  resetForm.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (!token) {
+      return;
+    }
+
+    const password = document.getElementById('resetPassword')?.value || '';
+    const confirm = document.getElementById('resetPasswordConfirm')?.value || '';
+
+    if (password.length < 8) {
+      showResetStatus('La contraseña debe tener al menos 8 caracteres.', 'error');
+      return;
+    }
+
+    if (password !== confirm) {
+      showResetStatus('Las contraseñas no coinciden.', 'error');
+      return;
+    }
+
+    try {
+      showResetStatus('Guardando tu nueva contraseña...', 'ok');
+      const resp = await fetch('/api/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, password }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) {
+        throw new Error(data.mensaje || 'No se pudo restablecer la contraseña.');
+      }
+      showResetStatus(data.mensaje || 'Contraseña actualizada. Redireccionando al login...', 'ok');
+      resetForm.reset();
+      setTimeout(() => {
+        window.location.href = '/login/';
+      }, 2000);
+    } catch (error) {
+      showResetStatus(error?.message || 'Ocurrió un error al restablecer la contraseña.', 'error');
+    }
   });
 }

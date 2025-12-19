@@ -3,9 +3,131 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const db = require('./db');
 const ai = require('./ai');
 const emailService = require('./email');
+
+const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 8 * 60 * 60 * 1000);
+const sessions = new Map();
+
+function createSession({ userId, role, username }) {
+  const token = crypto.randomBytes(48).toString('hex');
+  const expiresAt = Date.now() + (Number.isFinite(SESSION_TTL_MS) ? SESSION_TTL_MS : 8 * 60 * 60 * 1000);
+  sessions.set(token, { userId, role, username, expiresAt });
+  return token;
+}
+
+function getSession(token) {
+  if (!token) return null;
+  const s = sessions.get(token);
+  if (!s) return null;
+  if (typeof s.expiresAt === 'number' && Date.now() > s.expiresAt) {
+    sessions.delete(token);
+    return null;
+  }
+  return s;
+}
+
+function requireAuth(req, res, next) {
+  const hdr = String(req.get('authorization') || '').trim();
+  const m = hdr.match(/^Bearer\s+(.+)$/i);
+  const token = m ? m[1] : '';
+  const session = getSession(token);
+  if (!session) {
+    return res.status(401).json({ ok: false, mensaje: 'No autorizado' });
+  }
+  req.auth = session;
+  next();
+}
+
+function requireRole(roles) {
+  const allowed = Array.isArray(roles) ? roles : [roles];
+  return (req, res, next) => {
+    const role = req.auth && req.auth.role ? String(req.auth.role) : '';
+    if (!allowed.includes(role)) {
+      return res.status(403).json({ ok: false, mensaje: 'No tienes permisos' });
+    }
+    next();
+  };
+}
+
+function rateLimit({ windowMs, max }) {
+  const hits = new Map();
+  const win = Number(windowMs) || 60_000;
+  const limit = Number(max) || 60;
+
+  return (req, res, next) => {
+    const ip = String(req.ip || req.connection?.remoteAddress || 'unknown');
+    const now = Date.now();
+    const entry = hits.get(ip);
+
+    if (!entry || now > entry.resetAt) {
+      hits.set(ip, { count: 1, resetAt: now + win });
+      return next();
+    }
+
+    entry.count += 1;
+    if (entry.count > limit) {
+      return res.status(429).json({ ok: false, mensaje: 'Demasiadas solicitudes. Intenta de nuevo más tarde.' });
+    }
+
+    next();
+  };
+}
+
+let USUARIOS_SCHEMA_CACHE = null;
+async function getUsuariosSchema() {
+  if (USUARIOS_SCHEMA_CACHE) return USUARIOS_SCHEMA_CACHE;
+  const [cols] = await db.pool.query('SHOW COLUMNS FROM usuarios');
+  const names = new Set((cols || []).map((c) => String(c.Field || '').toLowerCase()));
+  const schema = {
+    hasEmail: names.has('email'),
+    hasRole: names.has('role'),
+    hasPasswordHash: names.has('password_hash'),
+    hasPassword: names.has('password'),
+  };
+  USUARIOS_SCHEMA_CACHE = schema;
+  return schema;
+}
+
+let POTENCIALES_TABLE_READY = false;
+async function ensurePotencialesTable() {
+  if (POTENCIALES_TABLE_READY) return;
+  await db.pool.query(`
+    CREATE TABLE IF NOT EXISTS potenciales (
+      id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      nombre VARCHAR(120) NOT NULL,
+      email VARCHAR(180) NOT NULL,
+      telefono VARCHAR(60) DEFAULT NULL,
+      mensaje TEXT DEFAULT NULL,
+      ip VARCHAR(80) DEFAULT NULL,
+      user_agent VARCHAR(255) DEFAULT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      INDEX idx_potenciales_created_at (created_at),
+      INDEX idx_potenciales_email (email)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `);
+  POTENCIALES_TABLE_READY = true;
+}
+
+function sha256Hex(value) {
+  return crypto.createHash('sha256').update(String(value || ''), 'utf8').digest('hex');
+}
+
+function looksLikeBcryptHash(value) {
+  const s = String(value || '');
+  return /^\$2[aby]\$\d\d\$/.test(s);
+}
+
+function safeEqualString(a, b) {
+  const aa = Buffer.from(String(a ?? ''), 'utf8');
+  const bb = Buffer.from(String(b ?? ''), 'utf8');
+  if (aa.length !== bb.length) return false;
+  return crypto.timingSafeEqual(aa, bb);
+}
 
 const RECEIPTS_DIR = path.join(__dirname, 'storage', 'recibos');
 const RECEIPT_TEMPLATE_PATH = path.join(__dirname, 'templates', 'recibo.html');
@@ -84,6 +206,15 @@ async function readReceiptMeta(reciboId) {
   }
 }
 
+function buildBaseUrl(req) {
+  const configured = String(process.env.BASE_URL || '').trim();
+  if (configured) return configured.replace(/\/$/, '');
+
+  const proto = req.protocol;
+  const host = req.get('host');
+  return `${proto}://${host}`;
+}
+
 const app = express();
 
 app.use(cors());
@@ -105,7 +236,234 @@ app.get('/register', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html'));
 });
 
-app.get('/clients', async (req, res) => {
+app.post('/api/login', rateLimit({ windowMs: 15 * 60 * 1000, max: 25 }), async (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ ok: false, mensaje: 'Ingresa usuario y contraseña.' });
+  }
+
+  try {
+    const schema = await getUsuariosSchema();
+    const identifier = String(username).trim();
+    const identifierLower = identifier.toLowerCase();
+
+    const passCol = schema.hasPasswordHash ? 'password_hash' : (schema.hasPassword ? 'password' : null);
+    if (!passCol) {
+      return res.status(500).json({ ok: false, mensaje: 'La tabla usuarios no tiene columna de contraseña' });
+    }
+
+    const selectCols = [
+      'id',
+      'username',
+      `${passCol} AS password_hash`,
+      schema.hasEmail ? 'email' : 'NULL AS email',
+      schema.hasRole ? 'role' : `'admin' AS role`,
+    ].join(', ');
+
+    const where = schema.hasEmail
+      ? 'WHERE LOWER(username) = ? OR LOWER(email) = ?'
+      : 'WHERE LOWER(username) = ?';
+    const params = schema.hasEmail ? [identifierLower, identifierLower] : [identifierLower];
+
+    const [rows] = await db.pool.query(
+      `SELECT ${selectCols} FROM usuarios ${where} LIMIT 1`,
+      params
+    );
+    const user = rows && rows[0];
+
+    if (!user) {
+      return res.status(401).json({ ok: false, mensaje: 'Usuario o contraseña incorrectos' });
+    }
+
+    const stored = String(user.password_hash || '');
+    const inputPassword = String(password || '').trim();
+    let matches = false;
+
+    if (stored && looksLikeBcryptHash(stored)) {
+      matches = await bcrypt.compare(inputPassword, stored);
+    } else if (stored) {
+      matches = safeEqualString(inputPassword, stored);
+      if (matches) {
+        const upgraded = await bcrypt.hash(inputPassword, 12);
+        await db.pool.execute(
+          `UPDATE usuarios SET ${passCol} = ? WHERE id = ? LIMIT 1`,
+          [upgraded, user.id]
+        );
+      }
+    }
+
+    if (!matches) {
+      return res.status(401).json({ ok: false, mensaje: 'Usuario o contraseña incorrectos' });
+    }
+
+    const token = createSession({
+      userId: user.id,
+      role: user.role || 'admin',
+      username: user.username,
+    });
+    res.json({
+      ok: true,
+      token,
+      role: user.role || 'admin',
+      username: user.username,
+      email: user.email,
+    });
+  } catch (error) {
+    console.error('Error en /api/login:', error);
+    res.status(500).json({ ok: false, mensaje: 'No se pudo iniciar sesión' });
+  }
+});
+
+app.post('/api/recover', rateLimit({ windowMs: 15 * 60 * 1000, max: 10 }), async (req, res) => {
+  const { email } = req.body || {};
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized) {
+    return res.status(400).json({ ok: false, mensaje: 'Ingresa el correo asociado a tu cuenta.' });
+  }
+
+  const genericResponse = 'Si tu correo está registrado, te enviaremos instrucciones para recuperar el acceso.';
+
+  try {
+    const schema = await getUsuariosSchema();
+    if (!schema.hasEmail) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: 'La tabla usuarios no tiene columna email. Agrega un campo email para habilitar recuperación por correo.',
+      });
+    }
+
+    const [rows] = await db.pool.query(
+      'SELECT id, username, email FROM usuarios WHERE LOWER(email) = ? LIMIT 1',
+      [normalized]
+    );
+    const user = rows && rows[0];
+
+    if (!user) {
+      return res.json({ ok: true, mensaje: genericResponse });
+    }
+
+    if (!emailService.hasEmailConfig()) {
+      return res.status(500).json({
+        ok: false,
+        mensaje: 'Falta configurar EMAIL_USER y EMAIL_PASS en backend/.env para enviar correos.',
+      });
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = sha256Hex(token);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    await db.pool.execute(
+      'UPDATE usuarios SET reset_token = ?, reset_expires = ? WHERE id = ? LIMIT 1',
+      [tokenHash, expiresAt, user.id]
+    );
+
+    const baseUrl = buildBaseUrl(req);
+    const resetUrl = `${baseUrl}/login/reset.html?token=${token}`;
+
+    await emailService.sendRecoveryEmail({
+      to: user.email,
+      username: user.username,
+      resetUrl,
+      expiresAt,
+    });
+
+    res.json({ ok: true, mensaje: genericResponse });
+  } catch (error) {
+    console.error('Error en /api/recover:', error);
+    res.status(500).json({ ok: false, mensaje: 'No se pudo procesar la solicitud de recuperación.' });
+  }
+});
+
+app.post('/api/reset-password', rateLimit({ windowMs: 15 * 60 * 1000, max: 15 }), async (req, res) => {
+  const { token, password } = req.body || {};
+  const cleanToken = String(token || '').trim();
+  const cleanPassword = String(password || '').trim();
+
+  if (!cleanToken || !cleanPassword) {
+    return res.status(400).json({ ok: false, mensaje: 'Faltan datos para restablecer la contraseña.' });
+  }
+
+  if (cleanPassword.length < 8) {
+    return res.status(400).json({ ok: false, mensaje: 'La nueva contraseña debe tener al menos 8 caracteres.' });
+  }
+
+  try {
+    const tokenHash = sha256Hex(cleanToken);
+    const [rows] = await db.pool.query(
+      'SELECT id FROM usuarios WHERE reset_token = ? AND reset_expires IS NOT NULL AND reset_expires > NOW() LIMIT 1',
+      [tokenHash]
+    );
+    const user = rows && rows[0];
+
+    if (!user) {
+      return res.status(400).json({ ok: false, mensaje: 'El enlace de recuperación es inválido o ya expiró.' });
+    }
+
+    const schema = await getUsuariosSchema();
+    const passCol = schema.hasPasswordHash ? 'password_hash' : (schema.hasPassword ? 'password' : null);
+    if (!passCol) {
+      return res.status(500).json({ ok: false, mensaje: 'La tabla usuarios no tiene columna de contraseña' });
+    }
+
+    const newHash = await bcrypt.hash(cleanPassword, 12);
+    await db.pool.execute(
+      `UPDATE usuarios SET ${passCol} = ?, reset_token = NULL, reset_expires = NULL WHERE id = ? LIMIT 1`,
+      [newHash, user.id]
+    );
+
+    res.json({ ok: true, mensaje: 'Tu contraseña se actualizó correctamente. Ya puedes iniciar sesión.' });
+  } catch (error) {
+    console.error('Error en /api/reset-password:', error);
+    res.status(500).json({ ok: false, mensaje: 'No se pudo restablecer la contraseña.' });
+  }
+});
+
+app.post('/api/potenciales', rateLimit({ windowMs: 15 * 60 * 1000, max: 40 }), async (req, res) => {
+  const { nombre, email, telefono, mensaje } = req.body || {};
+  const cleanNombre = String(nombre || '').trim();
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  const cleanTelefono = String(telefono || '').trim();
+  const cleanMensaje = String(mensaje || '').trim();
+
+  if (!cleanNombre || !cleanEmail) {
+    return res.status(400).json({ ok: false, mensaje: 'Por favor ingresa al menos tu nombre y email.' });
+  }
+
+  try {
+    await ensurePotencialesTable();
+    const ip = String(req.ip || req.connection?.remoteAddress || '').slice(0, 80);
+    const ua = String(req.get('user-agent') || '').slice(0, 255);
+
+    await db.pool.execute(
+      'INSERT INTO potenciales (nombre, email, telefono, mensaje, ip, user_agent) VALUES (?,?,?,?,?,?)',
+      [cleanNombre, cleanEmail, cleanTelefono || null, cleanMensaje || null, ip || null, ua || null]
+    );
+
+    res.json({ ok: true, mensaje: 'Hemos recibido tu solicitud, te contactaremos pronto.' });
+  } catch (error) {
+    console.error('Error en /api/potenciales:', error);
+    res.status(500).json({ ok: false, mensaje: 'No se pudo guardar tu solicitud.' });
+  }
+});
+
+app.get('/api/potenciales', requireAuth, requireRole(['admin', 'editor']), async (req, res) => {
+  const limitRaw = Number(req.query && req.query.limit ? req.query.limit : 200);
+  const limit = Number.isInteger(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
+
+  try {
+    await ensurePotencialesTable();
+    const [rows] = await db.pool.query(
+      'SELECT id, nombre, email, telefono, mensaje, created_at FROM potenciales ORDER BY created_at DESC, id DESC LIMIT ?',
+      [limit]
+    );
+    res.json({ ok: true, potenciales: rows || [] });
+  } catch (error) {
+    console.error('Error listando potenciales:', error);
+    res.status(500).json({ ok: false, mensaje: 'No se pudieron cargar los potenciales.' });
+  }
+});
+
+app.get('/clients', requireAuth, async (req, res) => {
   try {
     const [rows] = await db.pool.query(
       'SELECT id, nombre, email FROM recibos ORDER BY id DESC LIMIT 200'
@@ -117,7 +475,7 @@ app.get('/clients', async (req, res) => {
   }
 });
 
-app.post('/ai/tips', async (req, res) => {
+app.post('/ai/tips', requireAuth, async (req, res) => {
   const { perfil, fechaCita } = req.body || {};
   try {
     const client = ai.buildClient();
@@ -140,7 +498,7 @@ app.post('/ai/tips', async (req, res) => {
   }
 });
 
-app.post('/ai/resultado', async (req, res) => {
+app.post('/ai/resultado', requireAuth, async (req, res) => {
   const { estado, detalle } = req.body || {};
   if (!estado) {
     return res.status(400).json({ ok: false, mensaje: 'Falta estado' });
@@ -167,7 +525,7 @@ app.post('/ai/resultado', async (req, res) => {
   }
 });
 
-app.post('/email/test', async (req, res) => {
+app.post('/email/test', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     if (!emailService.hasEmailConfig()) {
       return res.status(400).json({
@@ -250,7 +608,7 @@ app.get('/recibo/:id', async (req, res) => {
   }
 });
 
-app.get('/recibos', async (req, res) => {
+app.get('/recibos', requireAuth, async (req, res) => {
   const limitRaw = Number(req.query.limit ?? 200);
   const limit = Number.isInteger(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
 
@@ -276,7 +634,8 @@ app.get('/recibos', async (req, res) => {
   }
 });
 
-app.delete('/recibos/:id', async (req, res) => {
+app.delete('/recibos/:id', requireAuth, requireRole('admin'), async (req, res) => {
+
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ ok: false, mensaje: 'ID inválido' });
@@ -303,27 +662,99 @@ app.delete('/recibos/:id', async (req, res) => {
   }
 });
 
-app.post('/tips', async (req, res) => {
+app.post('/tips', requireAuth, async (req, res) => {
   const { clienteId, fechaCita, perfil, mensaje } = req.body;
 
   if (!clienteId || !fechaCita || !mensaje) {
     return res.status(400).json({ error: true, mensaje: 'Faltan datos obligatorios' });
   }
 
-  res.json({ error: false, mensaje: 'Tips enviados correctamente' });
+  try {
+    const id = Number(clienteId);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ error: true, mensaje: 'Cliente inválido' });
+    }
+
+    const [rows] = await db.pool.execute('SELECT id, nombre, email FROM recibos WHERE id = ? LIMIT 1', [id]);
+    const client = rows && rows[0];
+    if (!client || !client.email) {
+      return res.status(404).json({ error: true, mensaje: 'Cliente no encontrado o sin email' });
+    }
+
+    if (!emailService.hasEmailConfig()) {
+      return res.status(400).json({
+        error: true,
+        mensaje: 'Falta configurar EMAIL_USER y EMAIL_PASS en backend/.env',
+      });
+    }
+
+    const info = await emailService.sendTipsEmail({
+      to: client.email,
+      clienteNombre: client.nombre,
+      fechaCita,
+      perfil,
+      mensaje,
+      baseUrl: buildBaseUrl(req),
+    });
+
+    res.json({
+      error: false,
+      mensaje: 'Tips enviados correctamente',
+      messageId: info && info.messageId ? info.messageId : undefined,
+    });
+  } catch (error) {
+    console.error('Error enviando tips:', error);
+    res.status(500).json({ error: true, mensaje: 'No se pudieron enviar los tips' });
+  }
 });
 
-app.post('/resultado', async (req, res) => {
+app.post('/resultado', requireAuth, async (req, res) => {
   const { clienteId, estado, detalle, mensaje } = req.body;
 
   if (!clienteId || !estado || !mensaje) {
     return res.status(400).json({ error: true, mensaje: 'Faltan datos obligatorios' });
   }
 
-  res.json({ error: false, mensaje: 'Resultado notificado correctamente' });
+  try {
+    const id = Number(clienteId);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ error: true, mensaje: 'Cliente inválido' });
+    }
+
+    const [rows] = await db.pool.execute('SELECT id, nombre, email FROM recibos WHERE id = ? LIMIT 1', [id]);
+    const client = rows && rows[0];
+    if (!client || !client.email) {
+      return res.status(404).json({ error: true, mensaje: 'Cliente no encontrado o sin email' });
+    }
+
+    if (!emailService.hasEmailConfig()) {
+      return res.status(400).json({
+        error: true,
+        mensaje: 'Falta configurar EMAIL_USER y EMAIL_PASS en backend/.env',
+      });
+    }
+
+    const info = await emailService.sendResultadoEmail({
+      to: client.email,
+      clienteNombre: client.nombre,
+      estado,
+      detalle,
+      mensaje,
+      baseUrl: buildBaseUrl(req),
+    });
+
+    res.json({
+      error: false,
+      mensaje: 'Resultado notificado correctamente',
+      messageId: info && info.messageId ? info.messageId : undefined,
+    });
+  } catch (error) {
+    console.error('Error notificando resultado:', error);
+    res.status(500).json({ error: true, mensaje: 'No se pudo notificar el resultado' });
+  }
 });
 
-app.post('/register', async (req, res) => {
+app.post('/register', requireAuth, async (req, res) => {
   const { nombre, email: emailAddress, concepto, monto, metodo, notas } = req.body;
 
   if (!nombre || !emailAddress || !concepto || !monto || !metodo) {
