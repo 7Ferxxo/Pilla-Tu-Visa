@@ -5,6 +5,11 @@ const path = require('path');
 const EMAIL_USER = String(process.env.EMAIL_USER || '').trim();
 const EMAIL_PASS = String(process.env.EMAIL_PASS || '').replace(/\s+/g, '');
 
+const SMTP_HOST = String(process.env.SMTP_HOST || '').trim();
+const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined;
+const SMTP_SECURE_RAW = String(process.env.SMTP_SECURE || '').trim().toLowerCase();
+const SMTP_SECURE = SMTP_SECURE_RAW === 'true' ? true : (SMTP_SECURE_RAW === 'false' ? false : undefined);
+
 const hasEmailConfig = () => Boolean(EMAIL_USER && EMAIL_USER.trim() && EMAIL_PASS && EMAIL_PASS.trim());
 
 const buildTransporter = () => {
@@ -14,12 +19,38 @@ const buildTransporter = () => {
     throw err;
   }
 
+  // En Railway algunos providers bloquean puertos SMTP (465/587). Permite configurar host/puerto.
+  if (SMTP_HOST) {
+    const port = Number.isInteger(SMTP_PORT) ? SMTP_PORT : 587;
+    const secure = typeof SMTP_SECURE === 'boolean' ? SMTP_SECURE : (port === 465);
+
+    return nodemailer.createTransport({
+      host: SMTP_HOST,
+      port,
+      secure,
+      auth: {
+        user: EMAIL_USER,
+        pass: EMAIL_PASS,
+      },
+      connectionTimeout: 15_000,
+      greetingTimeout: 15_000,
+      socketTimeout: 20_000,
+      tls: {
+        servername: SMTP_HOST,
+      },
+    });
+  }
+
+  // Fallback local: Gmail service
   return nodemailer.createTransport({
     service: 'gmail',
     auth: {
       user: EMAIL_USER,
       pass: EMAIL_PASS,
     },
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 20_000,
   });
 };
 
