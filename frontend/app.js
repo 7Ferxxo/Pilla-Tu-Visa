@@ -5,6 +5,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const TOKEN_KEY = 'ptv_token';
     const USER_KEY = 'ptv_user';
+
+    const tokenAtLoad = localStorage.getItem(TOKEN_KEY);
+    if (!tokenAtLoad) {
+        window.location.href = '/login/';
+        return;
+    }
     const getAuthHeader = () => {
         const token = localStorage.getItem(TOKEN_KEY);
         return token ? { Authorization: `Bearer ${token}` } : {};
@@ -19,6 +25,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return false;
     };
+
+    const logout = async () => {
+        try {
+            await fetch('/api/logout', { method: 'POST', headers: { ...getAuthHeader() } });
+        } catch {
+        }
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
+        window.location.href = '/login/';
+    };
+
+    const btnLogout = document.getElementById('btnLogout');
+    if (btnLogout) {
+        btnLogout.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            logout();
+        });
+    }
 
     const tabs = Array.from(document.querySelectorAll('.tab[data-view]'));
     const sections = Array.from(document.querySelectorAll('[data-section]'));

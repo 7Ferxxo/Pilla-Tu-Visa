@@ -92,3 +92,7 @@
 }
 
 .btn-delete:hover{background:#fee2e2}
+
+@media (max-width: 720px){
+  .receipt-toolbar{flex-wrap:wrap; justify-content:flex-start}
+}

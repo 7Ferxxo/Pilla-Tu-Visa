@@ -262,6 +262,16 @@ body {
         padding: 40px 16px;
     }
 
+    .tabs {
+        flex-wrap: wrap;
+        border-radius: 18px;
+        padding: 10px;
+    }
+
+    .tab {
+        flex: 1 1 auto;
+    }
+
     .card {
         padding: 26px;
     }

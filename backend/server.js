@@ -9,35 +9,114 @@ const db = require('./db');
 const ai = require('./ai');
 const emailService = require('./email');
 
-const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 8 * 60 * 60 * 1000);
+const DEFAULT_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || DEFAULT_SESSION_TTL_MS);
 const sessions = new Map();
 
-function createSession({ userId, role, username }) {
+let SESSIONS_TABLE_READY = false;
+async function ensureSessionsTable() {
+  if (SESSIONS_TABLE_READY) return;
+  await db.pool.query(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      token VARCHAR(128) NOT NULL,
+      user_id INT UNSIGNED NOT NULL,
+      role VARCHAR(20) NOT NULL,
+      username VARCHAR(80) NOT NULL,
+      expires_at BIGINT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (token),
+      INDEX idx_sessions_expires_at (expires_at),
+      INDEX idx_sessions_user_id (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `);
+  SESSIONS_TABLE_READY = true;
+}
+
+function computeExpiryMs() {
+  const ttl = Number.isFinite(SESSION_TTL_MS) && SESSION_TTL_MS > 0 ? SESSION_TTL_MS : DEFAULT_SESSION_TTL_MS;
+  return Date.now() + ttl;
+}
+
+async function createSession({ userId, role, username }) {
+  await ensureSessionsTable();
   const token = crypto.randomBytes(48).toString('hex');
-  const expiresAt = Date.now() + (Number.isFinite(SESSION_TTL_MS) ? SESSION_TTL_MS : 8 * 60 * 60 * 1000);
-  sessions.set(token, { userId, role, username, expiresAt });
+  const expiresAt = computeExpiryMs();
+
+  await db.pool.execute(
+    'INSERT INTO sessions (token, user_id, role, username, expires_at) VALUES (?,?,?,?,?)',
+    [token, userId, String(role || 'admin'), String(username || ''), expiresAt]
+  );
+
+  sessions.set(token, { userId, role: String(role || 'admin'), username: String(username || ''), expiresAt });
   return token;
 }
 
-function getSession(token) {
-  if (!token) return null;
-  const s = sessions.get(token);
-  if (!s) return null;
-  if (typeof s.expiresAt === 'number' && Date.now() > s.expiresAt) {
-    sessions.delete(token);
-    return null;
+async function deleteSession(token) {
+  if (!token) return;
+  sessions.delete(token);
+  try {
+    await ensureSessionsTable();
+    await db.pool.execute('DELETE FROM sessions WHERE token = ? LIMIT 1', [token]);
+  } catch {
   }
-  return s;
 }
 
-function requireAuth(req, res, next) {
+async function getSession(token) {
+  if (!token) return null;
+
+  const cached = sessions.get(token);
+  if (cached && typeof cached.expiresAt === 'number' && Date.now() <= cached.expiresAt) {
+    const newExpires = computeExpiryMs();
+    cached.expiresAt = newExpires;
+    sessions.set(token, cached);
+    try {
+      await ensureSessionsTable();
+      await db.pool.execute('UPDATE sessions SET expires_at = ? WHERE token = ? LIMIT 1', [newExpires, token]);
+    } catch {
+    }
+    return cached;
+  }
+
+  await ensureSessionsTable();
+  const [rows] = await db.pool.query(
+    'SELECT user_id AS userId, role, username, expires_at AS expiresAt FROM sessions WHERE token = ? LIMIT 1',
+    [token]
+  );
+  const s = rows && rows[0];
+  if (!s) return null;
+
+  if (typeof s.expiresAt === 'number' && Date.now() > s.expiresAt) {
+    await deleteSession(token);
+    return null;
+  }
+
+  const refreshed = {
+    userId: s.userId,
+    role: s.role,
+    username: s.username,
+    expiresAt: computeExpiryMs(),
+  };
+
+  sessions.set(token, refreshed);
+  await db.pool.execute('UPDATE sessions SET expires_at = ? WHERE token = ? LIMIT 1', [refreshed.expiresAt, token]);
+  return refreshed;
+}
+
+async function requireAuth(req, res, next) {
   const hdr = String(req.get('authorization') || '').trim();
   const m = hdr.match(/^Bearer\s+(.+)$/i);
   const token = m ? m[1] : '';
-  const session = getSession(token);
+  let session;
+  try {
+    session = await getSession(token);
+  } catch (e) {
+    console.error('Error leyendo sesión:', e);
+    return res.status(500).json({ ok: false, mensaje: 'Error validando sesión' });
+  }
   if (!session) {
     return res.status(401).json({ ok: false, mensaje: 'No autorizado' });
   }
+  req.authToken = token;
   req.auth = session;
   next();
 }
@@ -112,6 +191,26 @@ async function ensureUsuariosTable() {
     await db.pool.query(stmt);
   }
 
+  // Compatibilidad con esquemas previos (password vs password_hash, sin email/role)
+  const [cols] = await db.pool.query('SHOW COLUMNS FROM usuarios');
+  const names = new Set((cols || []).map((c) => String(c.Field || '').toLowerCase()));
+
+  if (!names.has('email')) {
+    try {
+      await db.pool.execute('ALTER TABLE usuarios ADD COLUMN email VARCHAR(120) NULL AFTER username');
+      names.add('email');
+    } catch {
+    }
+  }
+
+  if (!names.has('role')) {
+    try {
+      await db.pool.execute("ALTER TABLE usuarios ADD COLUMN role ENUM('admin','editor','viewer') NOT NULL DEFAULT 'admin' AFTER email");
+      names.add('role');
+    } catch {
+    }
+  }
+
   const defaultAdminEmail = String(process.env.DEFAULT_ADMIN_EMAIL || 'admin@pillatuvisa.com')
     .trim()
     .toLowerCase();
@@ -120,10 +219,31 @@ async function ensureUsuariosTable() {
   ).trim();
   const defaultAdminRole = String(process.env.DEFAULT_ADMIN_ROLE || 'admin').trim();
 
-  await db.pool.execute(
-    'INSERT IGNORE INTO usuarios (username, email, password_hash, role) VALUES (?,?,?,?)',
-    ['admin', defaultAdminEmail, defaultAdminHash, defaultAdminRole]
-  );
+  const passCol = names.has('password_hash') ? 'password_hash' : (names.has('password') ? 'password' : null);
+  const canInsert = Boolean(passCol) && names.has('username');
+  if (canInsert) {
+    const columns = ['username'];
+    const values = ['admin'];
+
+    if (names.has('email')) {
+      columns.push('email');
+      values.push(defaultAdminEmail);
+    }
+
+    columns.push(passCol);
+    values.push(defaultAdminHash);
+
+    if (names.has('role')) {
+      columns.push('role');
+      values.push(defaultAdminRole);
+    }
+
+    const placeholders = columns.map(() => '?').join(',');
+    await db.pool.execute(
+      `INSERT IGNORE INTO usuarios (${columns.join(',')}) VALUES (${placeholders})`,
+      values
+    );
+  }
 
   USUARIOS_TABLE_READY = true;
 }
@@ -347,7 +467,7 @@ app.post('/api/login', rateLimit({ windowMs: 15 * 60 * 1000, max: 25 }), async (
       return res.status(401).json({ ok: false, mensaje: 'Usuario o contraseña incorrectos' });
     }
 
-    const token = createSession({
+    const token = await createSession({
       userId: user.id,
       role: user.role || 'admin',
       username: user.username,
@@ -363,6 +483,15 @@ app.post('/api/login', rateLimit({ windowMs: 15 * 60 * 1000, max: 25 }), async (
     console.error('Error en /api/login:', error);
     res.status(500).json({ ok: false, mensaje: 'No se pudo iniciar sesión' });
   }
+});
+
+app.post('/api/logout', requireAuth, async (req, res) => {
+  try {
+    await deleteSession(req.authToken);
+  } catch (e) {
+    console.error('Error en /api/logout:', e);
+  }
+  res.json({ ok: true });
 });
 
 app.post('/api/recover', rateLimit({ windowMs: 15 * 60 * 1000, max: 10 }), async (req, res) => {

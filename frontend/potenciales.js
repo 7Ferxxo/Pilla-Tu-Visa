@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const statusEl = document.getElementById('potencialesStatus');
   const bodyEl = document.getElementById('potencialesBody');
   const btnRecargar = document.getElementById('btnRecargar');
+  const btnLogout = document.getElementById('btnLogout');
 
   const TOKEN_KEY = 'ptv_token';
   const USER_KEY = 'ptv_user';
@@ -9,6 +10,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const token = localStorage.getItem(TOKEN_KEY);
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
+
+  const tokenAtLoad = localStorage.getItem(TOKEN_KEY);
+  if (!tokenAtLoad) {
+    window.location.href = '/login/';
+    return;
+  }
 
   const redirectToLoginIfUnauthorized = (resp) => {
     if (resp && resp.status === 401) {
@@ -19,6 +26,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     return false;
   };
+
+  const logout = async () => {
+    try {
+      await fetch('/api/logout', { method: 'POST', headers: { ...getAuthHeader() } });
+    } catch {
+    }
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    window.location.href = '/login/';
+  };
+
+  if (btnLogout) {
+    btnLogout.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      logout();
+    });
+  }
 
   const setStatus = (texto, tipo) => {
     if (!statusEl) return;
