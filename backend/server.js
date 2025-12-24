@@ -284,6 +284,26 @@ async function ensurePotencialesTable() {
   POTENCIALES_TABLE_READY = true;
 }
 
+let RECIBOS_TABLE_READY = false;
+async function ensureRecibosTable() {
+  if (RECIBOS_TABLE_READY) return;
+  await db.pool.query(`
+    CREATE TABLE IF NOT EXISTS recibos (
+      id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      nombre VARCHAR(120) NOT NULL,
+      email VARCHAR(180) NOT NULL,
+      concepto VARCHAR(255) NOT NULL,
+      monto DECIMAL(10,2) NOT NULL,
+      metodo VARCHAR(60) NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      INDEX idx_recibos_created_at (created_at),
+      INDEX idx_recibos_email (email)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `);
+  RECIBOS_TABLE_READY = true;
+}
+
 function sha256Hex(value) {
   return crypto.createHash('sha256').update(String(value || ''), 'utf8').digest('hex');
 }
@@ -654,6 +674,7 @@ app.get('/api/potenciales', requireAuth, requireRole(['admin', 'editor']), async
 
 app.get('/clients', requireAuth, async (req, res) => {
   try {
+    await ensureRecibosTable();
     const [rows] = await db.pool.query(
       'SELECT id, nombre, email FROM recibos ORDER BY id DESC LIMIT 200'
     );
@@ -765,6 +786,7 @@ app.get('/recibo/:id', async (req, res) => {
   }
 
   try {
+    await ensureRecibosTable();
     const [rows] = await db.pool.execute(
       'SELECT id, nombre, email, concepto, monto, metodo FROM recibos WHERE id = ? LIMIT 1',
       [id]
@@ -802,6 +824,7 @@ app.get('/recibos', requireAuth, async (req, res) => {
   const limit = Number.isInteger(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
 
   try {
+    await ensureRecibosTable();
     const [rows] = await db.pool.query(
       `SELECT id, nombre, email, concepto, monto, metodo FROM recibos ORDER BY id DESC LIMIT ${limit}`
     );
@@ -831,6 +854,7 @@ app.delete('/recibos/:id', requireAuth, requireRole('admin'), async (req, res) =
   }
 
   try {
+    await ensureRecibosTable();
     const [result] = await db.pool.execute('DELETE FROM recibos WHERE id = ? LIMIT 1', [id]);
     const affected = result && typeof result.affectedRows === 'number' ? result.affectedRows : 0;
     if (!affected) {
@@ -859,6 +883,7 @@ app.post('/tips', requireAuth, async (req, res) => {
   }
 
   try {
+    await ensureRecibosTable();
     const id = Number(clienteId);
     if (!Number.isInteger(id)) {
       return res.status(400).json({ error: true, mensaje: 'Cliente inválido' });
@@ -905,6 +930,7 @@ app.post('/resultado', requireAuth, async (req, res) => {
   }
 
   try {
+    await ensureRecibosTable();
     const id = Number(clienteId);
     if (!Number.isInteger(id)) {
       return res.status(400).json({ error: true, mensaje: 'Cliente inválido' });
@@ -954,6 +980,7 @@ app.post('/register', requireAuth, async (req, res) => {
   }
 
   try {
+    await ensureRecibosTable();
     const sql = `
       INSERT INTO recibos (nombre, email, concepto, monto, metodo)
       VALUES (?, ?, ?, ?, ?)
