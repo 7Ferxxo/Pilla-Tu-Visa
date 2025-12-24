@@ -13,11 +13,22 @@ function requireEnv(name, { allowEmpty = false } = {}) {
   return value;
 }
 
-const host = requireEnv('DB_HOST');
-const user = requireEnv('DB_USER');
-const password = requireEnv('DB_PASSWORD', { allowEmpty: true });
-const database = requireEnv('DB_NAME');
-const port = Number(requireEnv('DB_PORT'));
+const pickEnv = (candidates, { allowEmpty = false } = {}) => {
+  for (const name of candidates) {
+    const val = process.env[name];
+    if (val === undefined || val === null) continue;
+    if (!allowEmpty && String(val).trim() === '') continue;
+    return val;
+  }
+  throw new Error(`Faltan variables de entorno: ${candidates.join(' / ')}`);
+};
+
+// Soporta ambos esquemas: DB_* (local) y MYSQL* (Railway)
+const host = pickEnv(['DB_HOST', 'MYSQLHOST']);
+const user = pickEnv(['DB_USER', 'MYSQLUSER']);
+const password = pickEnv(['DB_PASSWORD', 'MYSQLPASSWORD'], { allowEmpty: true });
+const database = pickEnv(['DB_NAME', 'MYSQLDATABASE']);
+const port = Number(pickEnv(['DB_PORT', 'MYSQLPORT']));
 
 if (!Number.isInteger(port)) {
   throw new Error('DB_PORT debe ser un número entero');

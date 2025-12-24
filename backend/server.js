@@ -78,8 +78,59 @@ function rateLimit({ windowMs, max }) {
 }
 
 let USUARIOS_SCHEMA_CACHE = null;
+
+const INIT_USERS_SQL_PATH = path.join(__dirname, 'sql', 'init_users.sql');
+let USUARIOS_TABLE_READY = false;
+
+function splitSqlStatements(sqlText) {
+  return String(sqlText || '')
+    .split(/;\s*(?:\r?\n|$)/g)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+async function ensureUsuariosTable() {
+  if (USUARIOS_TABLE_READY) return;
+
+  let sqlText;
+  try {
+    sqlText = fs.readFileSync(INIT_USERS_SQL_PATH, 'utf8');
+  } catch (e) {
+    throw new Error(
+      `No se pudo leer el archivo de inicialización de usuarios (${INIT_USERS_SQL_PATH}). ` +
+        'Asegúrate de que exista en el deploy.'
+    );
+  }
+
+  const statements = splitSqlStatements(sqlText);
+  const createStatements = statements.filter((s) => /^CREATE\s+TABLE\b/i.test(s));
+  if (createStatements.length === 0) {
+    throw new Error('El SQL de inicialización de usuarios no contiene CREATE TABLE');
+  }
+
+  for (const stmt of createStatements) {
+    await db.pool.query(stmt);
+  }
+
+  const defaultAdminEmail = String(process.env.DEFAULT_ADMIN_EMAIL || 'admin@pillatuvisa.com')
+    .trim()
+    .toLowerCase();
+  const defaultAdminHash = String(
+    process.env.DEFAULT_ADMIN_PASSWORD_HASH || '$2b$12$IcobK/3zX1hm8XD98rGL4uVJNJb1ALLyMvf9Cn3r3uTCmsBt89JJW'
+  ).trim();
+  const defaultAdminRole = String(process.env.DEFAULT_ADMIN_ROLE || 'admin').trim();
+
+  await db.pool.execute(
+    'INSERT IGNORE INTO usuarios (username, email, password_hash, role) VALUES (?,?,?,?)',
+    ['admin', defaultAdminEmail, defaultAdminHash, defaultAdminRole]
+  );
+
+  USUARIOS_TABLE_READY = true;
+}
+
 async function getUsuariosSchema() {
   if (USUARIOS_SCHEMA_CACHE) return USUARIOS_SCHEMA_CACHE;
+  await ensureUsuariosTable();
   const [cols] = await db.pool.query('SHOW COLUMNS FROM usuarios');
   const names = new Set((cols || []).map((c) => String(c.Field || '').toLowerCase()));
   const schema = {
@@ -880,7 +931,15 @@ app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
 
-db.testConnection().catch(() => {});
+db.testConnection()
+  .then(async () => {
+    try {
+      await ensureUsuariosTable();
+    } catch (e) {
+      console.error('WARN: No se pudo inicializar la tabla usuarios:', e && e.message ? e.message : e);
+    }
+  })
+  .catch(() => {});
 
 
 
