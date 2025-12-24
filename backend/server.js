@@ -1096,9 +1096,11 @@ app.get('/test-db', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || '0.0.0.0';
+// Railway/containers necesitan escuchar en 0.0.0.0 para exponer el puerto.
+// Evitamos usar process.env.HOST porque a veces viene con un valor no apto para bind.
+const HOST = process.env.BIND_HOST || '0.0.0.0';
 const server = app.listen(PORT, HOST, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`Servidor escuchando en ${HOST}:${PORT}`);
 });
 
 process.on('SIGTERM', () => {
