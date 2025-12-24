@@ -1096,12 +1096,19 @@ app.get('/test-db', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-// Railway/containers necesitan escuchar en 0.0.0.0 para exponer el puerto.
+// Railway/containers: por compatibilidad, si no se define BIND_HOST,
+// no pasamos host para permitir dual-stack (IPv4/IPv6) según el runtime.
 // Evitamos usar process.env.HOST porque a veces viene con un valor no apto para bind.
-const HOST = process.env.BIND_HOST || '0.0.0.0';
-const server = app.listen(PORT, HOST, () => {
-  console.log(`Servidor escuchando en ${HOST}:${PORT}`);
-});
+const BIND_HOST = String(process.env.BIND_HOST || '').trim();
+const server = BIND_HOST
+  ? app.listen(PORT, BIND_HOST, () => {
+    console.log(`Servidor escuchando en ${BIND_HOST}:${PORT}`);
+  })
+  : app.listen(PORT, () => {
+    const addr = server.address && server.address();
+    const human = addr && typeof addr === 'object' ? `${addr.address}:${addr.port}` : `:${PORT}`;
+    console.log(`Servidor escuchando en ${human}`);
+  });
 
 process.on('SIGTERM', () => {
   try {
