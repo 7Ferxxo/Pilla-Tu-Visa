@@ -424,12 +424,16 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', async (req, res) => {
+  // Railway healthcheck: siempre responder 200 para no matar el contenedor
+  // mientras la DB termina de levantar. Reportamos dbOk como señal diagnóstica.
+  let dbOk = false;
   try {
     await db.pool.query('SELECT 1');
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ ok: false });
+    dbOk = true;
+  } catch {
+    dbOk = false;
   }
+  res.status(200).json({ ok: true, dbOk });
 });
 
 app.get('/register', (req, res) => {
