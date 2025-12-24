@@ -403,6 +403,15 @@ app.get('/', (req, res) => {
   res.send('Pilla Tu Visa API funcionando 🚀');
 });
 
+app.get('/health', async (req, res) => {
+  try {
+    await db.pool.query('SELECT 1');
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false });
+  }
+});
+
 app.get('/register', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html'));
 });
@@ -1056,8 +1065,20 @@ app.get('/test-db', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const HOST = process.env.HOST || '0.0.0.0';
+const server = app.listen(PORT, HOST, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
+});
+
+process.on('SIGTERM', () => {
+  try {
+    server.close(() => {
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(0), 5_000).unref();
+  } catch {
+    process.exit(0);
+  }
 });
 
 db.testConnection()
