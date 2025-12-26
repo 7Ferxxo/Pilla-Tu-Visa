@@ -11,42 +11,58 @@
   <link rel="stylesheet" href="caja-de-recibos/cajaderecibos.css" />
 </head>
 <body>
-  <div class="container">
-    <header class="top">
-      <img src="/imagenes/logo.png" alt="Logo" class="logo" />
-      <h1 class="page-title">Potenciales</h1>
-    </header>
-
-    <section class="card">
-      <div class="receipt-toolbar">
-        <a class="btn-back" href="/register">← Volver</a>
-        <button type="button" id="btnLogout" class="btn-secondary">Cerrar sesión</button>
-        <button type="button" id="btnRecargar" class="btn-secondary">Recargar</button>
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <img src="/imagenes/logo.png" alt="Logo" class="logo" />
       </div>
+      <nav class="sidebar-nav">
+        <a class="nav-item tab-link" href="/">
+          <span>Inicio</span>
+        </a>
+        <a class="nav-item tab-link tab--active" href="/potenciales.html">
+          <span>Potenciales</span>
+        </a>
+        <a class="nav-item tab-link" href="/caja-de-recibos/cajaderecibos.html">
+          <span>Recibos</span>
+        </a>
+      </nav>
+    </aside>
 
-      <div id="potencialesStatus" class="mensaje-oculto" role="status" aria-live="polite"></div>
+    <!-- Main Content -->
+    <main class="main-content">
+      <header class="top-bar">
+        <h1 class="page-title">Potenciales</h1>
+        <button type="button" id="btnLogout" class="btn-logout">Cerrar sesión</button>
+      </header>
 
-      <div class="list-wrap">
-        <table class="list-table" aria-label="Listado de clientes potenciales">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Nombre</th>
-              <th>Email</th>
-              <th>Teléfono</th>
-              <th>Mensaje</th>
-              <th>Fecha</th>
-            </tr>
-          </thead>
-          <tbody id="potencialesBody"></tbody>
-        </table>
+      <div class="content-area">
+        <section class="card" style="height: 100%; display: flex; flex-direction: column;">
+          <div class="receipt-toolbar">
+            <button type="button" id="btnRecargar" class="btn-secondary">Recargar</button>
+          </div>
+
+          <div id="potencialesStatus" class="mensaje-oculto" role="status" aria-live="polite"></div>
+
+          <div class="list-wrap" style="flex-grow: 1;">
+            <table class="list-table" aria-label="Listado de clientes potenciales">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Nombre</th>
+                  <th>Email</th>
+                  <th>Teléfono</th>
+                  <th>Mensaje</th>
+                  <th>Fecha</th>
+                </tr>
+              </thead>
+              <tbody id="potencialesBody"></tbody>
+            </table>
+          </div>
+        </section>
       </div>
-    </section>
-
-    <footer class="footer">
-      <div>Pilla Tu Visa System 2025</div>
-      <div>BY: Ferxxu</div>
-    </footer>
+    </main>
   </div>
 
   <script src="potenciales.js"></script>
