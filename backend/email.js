@@ -85,7 +85,7 @@ function convertAttachmentsForSendgrid(attachments) {
     out.push({
       filename,
       content: toBase64(bytes),
-      type: a.contentType ? String(a.contentType) : undefined,
+      type: a.contentType ? String(a.contentType).split(';')[0].trim() : undefined,
       disposition: 'attachment',
     });
   }
