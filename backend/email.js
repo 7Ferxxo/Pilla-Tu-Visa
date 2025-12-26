@@ -7,6 +7,7 @@ const EMAIL_PASS = String(process.env.EMAIL_PASS || '').replace(/\s+/g, '');
 
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
 const EMAIL_FROM = String(process.env.EMAIL_FROM || process.env.EMAIL_USER || '').trim();
+const EMAIL_REPLY_TO = String(process.env.EMAIL_REPLY_TO || process.env.EMAIL_USER || '').trim();
 
 const SMTP_HOST = String(process.env.SMTP_HOST || '').trim();
 const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined;
@@ -89,6 +90,13 @@ async function sendViaResend({ from, to, subject, html, text, attachments }) {
       html: html ? String(html) : undefined,
       text: text ? String(text) : undefined,
     };
+
+    if (EMAIL_REPLY_TO) {
+      payload.reply_to = EMAIL_REPLY_TO;
+      payload.headers = {
+        'Reply-To': EMAIL_REPLY_TO,
+      };
+    }
     const resendAttachments = convertAttachmentsForResend(attachments);
     if (resendAttachments.length) payload.attachments = resendAttachments;
 
@@ -324,6 +332,7 @@ async function sendReceiptEmail({
     text,
     html,
     attachments,
+    ...(EMAIL_REPLY_TO ? { replyTo: EMAIL_REPLY_TO } : {}),
   });
 }
 
@@ -361,6 +370,7 @@ async function sendTestEmail({
     subject,
     text,
     html,
+    ...(EMAIL_REPLY_TO ? { replyTo: EMAIL_REPLY_TO } : {}),
   });
 }
 
@@ -407,6 +417,7 @@ async function sendRecoveryEmail({ to, username, resetUrl, expiresAt }) {
     subject,
     text,
     html,
+    ...(EMAIL_REPLY_TO ? { replyTo: EMAIL_REPLY_TO } : {}),
   });
 }
 
@@ -505,6 +516,7 @@ async function sendTipsEmail({
           },
         ]
       : [],
+    ...(EMAIL_REPLY_TO ? { replyTo: EMAIL_REPLY_TO } : {}),
   });
 }
 
@@ -559,6 +571,7 @@ async function sendResultadoEmail({
     subject,
     text,
     html,
+    ...(EMAIL_REPLY_TO ? { replyTo: EMAIL_REPLY_TO } : {}),
   });
 }
 
