@@ -10,22 +10,41 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
-        <header class="top">
-            <img src="/imagenes/logo.png" alt="Logo" class="logo">
-            <h1 class="page-title">Inicio</h1>
-        </header>
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <img src="/imagenes/logo.png" alt="Logo" class="logo">
+            </div>
+            
+            <nav class="sidebar-nav">
+                <button type="button" class="nav-item tab tab--active" data-view="nuevo">
+                    <span>Nuevo Cliente</span>
+                </button>
+                <button type="button" class="nav-item tab" data-view="tips">
+                    <span>Enviar Tips + IA</span>
+                </button>
+                <button type="button" class="nav-item tab" data-view="resultado">
+                    <span>Resultado</span>
+                </button>
+                <a class="nav-item tab-link" href="/potenciales.html">
+                    <span>Potenciales</span>
+                </a>
+                <a class="nav-item tab-link" href="/caja-de-recibos/cajaderecibos.html">
+                    <span>Recibos</span>
+                </a>
+            </nav>
+        </aside>
 
-        <nav class="tabs" aria-label="Navegación">
-            <button type="button" class="tab tab--active" data-view="nuevo">Nuevo Cliente</button>
-            <button type="button" class="tab" data-view="tips">Enviar Tips + IA</button>
-            <button type="button" class="tab" data-view="resultado">Resultado</button>
-            <a class="tab tab-link" href="/potenciales.html">Potenciales</a>
-            <a class="tab tab-link" href="/caja-de-recibos/cajaderecibos.html">Recibos</a>
-            <button type="button" class="tab" id="btnLogout">Cerrar sesión</button>
-        </nav>
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-bar">
+                <h1 class="page-title">Inicio</h1>
+                <button type="button" id="btnLogout" class="btn-logout">Cerrar sesión</button>
+            </header>
 
-        <section class="card" data-section="nuevo">
+            <div class="content-area">
+                <section class="card" data-section="nuevo">
             <h2 class="card-title">Registrar Cliente</h2>
 
             <form id="registroForm" class="registro-form">
@@ -145,9 +164,11 @@
 
             <div id="resultadoStatus" class="mensaje-oculto" role="status" aria-live="polite"></div>
         </section>
+            </div>
+        </main>
+    </div>
 
-
-        <footer class="footer">
+    <footer class="footer">
             <div>Pilla Tu Visa System 2025</div>
             <div>BY: Ferxxu</div>
         </footer>
