@@ -9,14 +9,17 @@ const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
 const EMAIL_FROM = String(process.env.EMAIL_FROM || process.env.EMAIL_USER || '').trim();
 const EMAIL_REPLY_TO = String(process.env.EMAIL_REPLY_TO || process.env.EMAIL_USER || '').trim();
 
+const SENDGRID_API_KEY = String(process.env.SENDGRID_API_KEY || '').trim();
+
 const SMTP_HOST = String(process.env.SMTP_HOST || '').trim();
 const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined;
 const SMTP_SECURE_RAW = String(process.env.SMTP_SECURE || '').trim().toLowerCase();
 const SMTP_SECURE = SMTP_SECURE_RAW === 'true' ? true : (SMTP_SECURE_RAW === 'false' ? false : undefined);
 
 const hasResendConfig = () => Boolean(RESEND_API_KEY && EMAIL_FROM);
+const hasSendgridConfig = () => Boolean(SENDGRID_API_KEY && EMAIL_FROM);
 const hasSmtpConfig = () => Boolean(EMAIL_USER && EMAIL_USER.trim() && EMAIL_PASS && EMAIL_PASS.trim());
-const hasEmailConfig = () => hasResendConfig() || hasSmtpConfig();
+const hasEmailConfig = () => hasSendgridConfig() || hasResendConfig() || hasSmtpConfig();
 
 function normalizeToList(to) {
   if (Array.isArray(to)) return to.map((x) => String(x).trim()).filter(Boolean);
@@ -57,6 +60,112 @@ function convertAttachmentsForResend(attachments) {
     });
   }
   return out;
+}
+
+function convertAttachmentsForSendgrid(attachments) {
+  const list = Array.isArray(attachments) ? attachments : [];
+  const out = [];
+  for (const a of list) {
+    if (!a) continue;
+    const filename = String(a.filename || '').trim();
+    if (!filename) continue;
+
+    let bytes;
+    if (a.content !== undefined && a.content !== null) {
+      bytes = Buffer.isBuffer(a.content) ? a.content : Buffer.from(String(a.content), 'utf8');
+    } else if (a.path) {
+      try {
+        bytes = fs.readFileSync(String(a.path));
+      } catch {
+        bytes = null;
+      }
+    }
+    if (!bytes) continue;
+
+    out.push({
+      filename,
+      content: toBase64(bytes),
+      type: a.contentType ? String(a.contentType) : undefined,
+      disposition: 'attachment',
+    });
+  }
+  return out;
+}
+
+async function sendViaSendgrid({ from, to, subject, html, text, attachments }) {
+  if (!SENDGRID_API_KEY) {
+    const err = new Error('Falta SENDGRID_API_KEY');
+    err.code = 'NO_SENDGRID_API_KEY';
+    throw err;
+  }
+
+  const fromAddr = String(from || EMAIL_FROM || '').trim();
+  if (!fromAddr) {
+    const err = new Error('Falta EMAIL_FROM');
+    err.code = 'NO_EMAIL_FROM';
+    throw err;
+  }
+
+  const toList = normalizeToList(to);
+  if (!toList.length) {
+    const err = new Error('Falta destinatario (to)');
+    err.code = 'NO_TO';
+    throw err;
+  }
+
+  const content = [];
+  if (text) content.push({ type: 'text/plain', value: String(text) });
+  if (html) content.push({ type: 'text/html', value: String(html) });
+  if (!content.length) content.push({ type: 'text/plain', value: '' });
+
+  const payload = {
+    personalizations: [
+      {
+        to: toList.map((emailAddr) => ({ email: emailAddr })),
+        subject: String(subject || ''),
+      },
+    ],
+    from: { email: fromAddr },
+    content,
+  };
+
+  if (EMAIL_REPLY_TO) {
+    payload.reply_to = { email: EMAIL_REPLY_TO };
+  }
+
+  const sendgridAttachments = convertAttachmentsForSendgrid(attachments);
+  if (sendgridAttachments.length) {
+    payload.attachments = sendgridAttachments.map((a) => {
+      const obj = { filename: a.filename, content: a.content, disposition: a.disposition };
+      if (a.type) obj.type = a.type;
+      return obj;
+    });
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000).unref();
+  try {
+    const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SENDGRID_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    const bodyText = await resp.text();
+    if (!resp.ok) {
+      const err = new Error(`SendGrid error: ${resp.status} ${bodyText}`);
+      err.code = 'SENDGRID_ERROR';
+      throw err;
+    }
+
+    return { ok: true };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function sendViaResend({ from, to, subject, html, text, attachments }) {
@@ -168,6 +277,13 @@ const buildTransporter = () => {
 };
 
 const buildMailer = () => {
+  if (hasSendgridConfig()) {
+    return {
+      provider: 'sendgrid',
+      sendMail: (opts) => sendViaSendgrid(opts),
+    };
+  }
+
   if (hasResendConfig()) {
     return {
       provider: 'resend',
