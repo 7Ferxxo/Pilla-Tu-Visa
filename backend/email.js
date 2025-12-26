@@ -5,21 +5,127 @@ const path = require('path');
 const EMAIL_USER = String(process.env.EMAIL_USER || '').trim();
 const EMAIL_PASS = String(process.env.EMAIL_PASS || '').replace(/\s+/g, '');
 
+const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
+const EMAIL_FROM = String(process.env.EMAIL_FROM || process.env.EMAIL_USER || '').trim();
+
 const SMTP_HOST = String(process.env.SMTP_HOST || '').trim();
 const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined;
 const SMTP_SECURE_RAW = String(process.env.SMTP_SECURE || '').trim().toLowerCase();
 const SMTP_SECURE = SMTP_SECURE_RAW === 'true' ? true : (SMTP_SECURE_RAW === 'false' ? false : undefined);
 
-const hasEmailConfig = () => Boolean(EMAIL_USER && EMAIL_USER.trim() && EMAIL_PASS && EMAIL_PASS.trim());
+const hasResendConfig = () => Boolean(RESEND_API_KEY && EMAIL_FROM);
+const hasSmtpConfig = () => Boolean(EMAIL_USER && EMAIL_USER.trim() && EMAIL_PASS && EMAIL_PASS.trim());
+const hasEmailConfig = () => hasResendConfig() || hasSmtpConfig();
+
+function normalizeToList(to) {
+  if (Array.isArray(to)) return to.map((x) => String(x).trim()).filter(Boolean);
+  const s = String(to || '').trim();
+  if (!s) return [];
+  if (s.includes(',')) return s.split(',').map((x) => x.trim()).filter(Boolean);
+  return [s];
+}
+
+function toBase64(bufOrString) {
+  if (Buffer.isBuffer(bufOrString)) return bufOrString.toString('base64');
+  return Buffer.from(String(bufOrString), 'utf8').toString('base64');
+}
+
+function convertAttachmentsForResend(attachments) {
+  const list = Array.isArray(attachments) ? attachments : [];
+  const out = [];
+  for (const a of list) {
+    if (!a) continue;
+    const filename = String(a.filename || '').trim();
+    if (!filename) continue;
+
+    let bytes;
+    if (a.content !== undefined && a.content !== null) {
+      bytes = Buffer.isBuffer(a.content) ? a.content : Buffer.from(String(a.content), 'utf8');
+    } else if (a.path) {
+      try {
+        bytes = fs.readFileSync(String(a.path));
+      } catch {
+        bytes = null;
+      }
+    }
+    if (!bytes) continue;
+
+    out.push({
+      filename,
+      content: toBase64(bytes),
+    });
+  }
+  return out;
+}
+
+async function sendViaResend({ from, to, subject, html, text, attachments }) {
+  if (!RESEND_API_KEY) {
+    const err = new Error('Falta RESEND_API_KEY');
+    err.code = 'NO_RESEND_API_KEY';
+    throw err;
+  }
+
+  const fromAddr = String(from || EMAIL_FROM || '').trim();
+  if (!fromAddr) {
+    const err = new Error('Falta EMAIL_FROM');
+    err.code = 'NO_EMAIL_FROM';
+    throw err;
+  }
+
+  const toList = normalizeToList(to);
+  if (!toList.length) {
+    const err = new Error('Falta destinatario (to)');
+    err.code = 'NO_TO';
+    throw err;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000).unref();
+  try {
+    const payload = {
+      from: fromAddr,
+      to: toList,
+      subject: String(subject || ''),
+      html: html ? String(html) : undefined,
+      text: text ? String(text) : undefined,
+    };
+    const resendAttachments = convertAttachmentsForResend(attachments);
+    if (resendAttachments.length) payload.attachments = resendAttachments;
+
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    const bodyText = await resp.text();
+    if (!resp.ok) {
+      const err = new Error(`Resend error: ${resp.status} ${bodyText}`);
+      err.code = 'RESEND_ERROR';
+      throw err;
+    }
+
+    try {
+      return JSON.parse(bodyText);
+    } catch {
+      return { ok: true };
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 const buildTransporter = () => {
-  if (!hasEmailConfig()) {
+  if (!hasSmtpConfig()) {
     const err = new Error('Falta EMAIL_USER o EMAIL_PASS');
     err.code = 'NO_EMAIL_CONFIG';
     throw err;
   }
 
-  // En Railway algunos providers bloquean puertos SMTP (465/587). Permite configurar host/puerto.
   if (SMTP_HOST) {
     const port = Number.isInteger(SMTP_PORT) ? SMTP_PORT : 587;
     const secure = typeof SMTP_SECURE === 'boolean' ? SMTP_SECURE : (port === 465);
@@ -41,7 +147,6 @@ const buildTransporter = () => {
     });
   }
 
-  // Fallback local: Gmail service
   return nodemailer.createTransport({
     service: 'gmail',
     auth: {
@@ -52,6 +157,27 @@ const buildTransporter = () => {
     greetingTimeout: 15_000,
     socketTimeout: 20_000,
   });
+};
+
+const buildMailer = () => {
+  if (hasResendConfig()) {
+    return {
+      provider: 'resend',
+      sendMail: (opts) => sendViaResend(opts),
+    };
+  }
+
+  if (hasSmtpConfig()) {
+    const transporter = buildTransporter();
+    return {
+      provider: 'smtp',
+      sendMail: transporter.sendMail.bind(transporter),
+    };
+  }
+
+  const err = new Error('Falta configuración de correo');
+  err.code = 'NO_EMAIL_CONFIG';
+  throw err;
 };
 
 const escapeHtml = (s) => String(s ?? '')
@@ -112,7 +238,7 @@ async function sendReceiptEmail({
   receiptHtml,
   baseUrl,
 }) {
-  const transporter = buildTransporter();
+  const mailer = buildMailer();
 
   const subject = `Recibo de pago #${reciboId} | Pilla Tu Visa`;
 
@@ -191,8 +317,8 @@ async function sendReceiptEmail({
     });
   }
 
-  return transporter.sendMail({
-    from: EMAIL_USER,
+  return mailer.sendMail({
+    from: EMAIL_FROM || EMAIL_USER,
     to,
     subject,
     text,
@@ -205,8 +331,8 @@ async function sendTestEmail({
   to,
   baseUrl,
 } = {}) {
-  const transporter = buildTransporter();
-  const target = String(to || EMAIL_USER || '').trim();
+  const mailer = buildMailer();
+  const target = String(to || EMAIL_USER || EMAIL_FROM || '').trim();
   if (!target) {
     const err = new Error('Falta destinatario (to)');
     err.code = 'NO_TO';
@@ -229,8 +355,8 @@ async function sendTestEmail({
 
   const text = `Correo de prueba\nFecha: ${now.toISOString()}\nBase URL: ${baseUrl || ''}`;
 
-  return transporter.sendMail({
-    from: EMAIL_USER,
+  return mailer.sendMail({
+    from: EMAIL_FROM || EMAIL_USER,
     to: target,
     subject,
     text,
@@ -239,7 +365,7 @@ async function sendTestEmail({
 }
 
 async function sendRecoveryEmail({ to, username, resetUrl, expiresAt }) {
-  const transporter = buildTransporter();
+  const mailer = buildMailer();
   const friendlyName = username || 'usuario';
   const subject = 'Recupera tu acceso | Pilla Tu Visa';
   const expiryText = expiresAt
@@ -275,8 +401,8 @@ async function sendRecoveryEmail({ to, username, resetUrl, expiresAt }) {
     'Si no solicitaste el cambio, ignora este mensaje.',
   ].join('\n');
 
-  return transporter.sendMail({
-    from: EMAIL_USER,
+  return mailer.sendMail({
+    from: EMAIL_FROM || EMAIL_USER,
     to,
     subject,
     text,
@@ -292,7 +418,7 @@ async function sendTipsEmail({
   mensaje,
   baseUrl,
 }) {
-  const transporter = buildTransporter();
+  const mailer = buildMailer();
   const subject = 'Tips de entrevista | Pilla Tu Visa';
 
   const safeBaseUrl = String(baseUrl || '').trim();
@@ -305,7 +431,8 @@ async function sendTipsEmail({
       return false;
     }
   })();
-  const logoImgHtml = hasLogoFile
+  const canInlineLogo = hasLogoFile && mailer.provider === 'smtp';
+  const logoImgHtml = canInlineLogo
     ? '<img src="cid:ptv-logo" alt="Pilla Tu Visa" style="width:44px; height:44px; object-fit:contain; border-radius:12px;" />'
     : (logoRemoteUrl
       ? `<img src="${escapeHtml(logoRemoteUrl)}" alt="Pilla Tu Visa" style="width:44px; height:44px; object-fit:contain; border-radius:12px;" />`
@@ -363,13 +490,13 @@ async function sendTipsEmail({
     sanitizeAiWording(String(mensaje || '')),
   ].join('\n');
 
-  return transporter.sendMail({
-    from: EMAIL_USER,
+  return mailer.sendMail({
+    from: EMAIL_FROM || EMAIL_USER,
     to,
     subject,
     text,
     html,
-    attachments: hasLogoFile
+    attachments: canInlineLogo
       ? [
           {
             filename: 'logo.png',
@@ -388,7 +515,7 @@ async function sendResultadoEmail({
   detalle,
   mensaje,
 }) {
-  const transporter = buildTransporter();
+  const mailer = buildMailer();
   const subject = 'Resultado de tu visa | Pilla Tu Visa';
   const html = `
     <div style="font-family:Arial,Helvetica,sans-serif; background:#f3f4f6; padding:24px;">
@@ -426,8 +553,8 @@ async function sendResultadoEmail({
     String(mensaje || ''),
   ].join('\n');
 
-  return transporter.sendMail({
-    from: EMAIL_USER,
+  return mailer.sendMail({
+    from: EMAIL_FROM || EMAIL_USER,
     to,
     subject,
     text,

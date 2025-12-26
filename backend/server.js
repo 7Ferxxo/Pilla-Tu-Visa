@@ -191,7 +191,6 @@ async function ensureUsuariosTable() {
     await db.pool.query(stmt);
   }
 
-  // Compatibilidad con esquemas previos (password vs password_hash, sin email/role)
   const [cols] = await db.pool.query('SHOW COLUMNS FROM usuarios');
   const names = new Set((cols || []).map((c) => String(c.Field || '').toLowerCase()));
 
@@ -424,8 +423,6 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', async (req, res) => {
-  // Railway healthcheck: siempre responder 200 para no matar el contenedor
-  // mientras la DB termina de levantar. Reportamos dbOk como señal diagnóstica.
   let dbOk = false;
   try {
     await db.pool.query('SELECT 1');
@@ -1096,9 +1093,6 @@ app.get('/test-db', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-// Railway/containers: por compatibilidad, si no se define BIND_HOST,
-// no pasamos host para permitir dual-stack (IPv4/IPv6) según el runtime.
-// Evitamos usar process.env.HOST porque a veces viene con un valor no apto para bind.
 const BIND_HOST = String(process.env.BIND_HOST || '').trim();
 const server = BIND_HOST
   ? app.listen(PORT, BIND_HOST, () => {

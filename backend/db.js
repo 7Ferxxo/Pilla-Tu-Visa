@@ -13,7 +13,6 @@ function pickEnvOptional(candidates, { allowEmpty = false } = {}) {
 }
 
 function parseMysqlUrl(urlString) {
-  // Soporta mysql://user:pass@host:3306/dbname
   const u = new URL(String(urlString));
   const protocol = String(u.protocol || '').toLowerCase();
   if (!protocol.startsWith('mysql')) {
@@ -55,8 +54,6 @@ const pickEnv = (candidates, { allowEmpty = false } = {}) => {
   throw new Error(`Faltan variables de entorno: ${candidates.join(' / ')}`);
 };
 
-// Soporta ambos esquemas: DB_* (local) y MYSQL* (Railway), incluyendo variantes con guion bajo.
-// También soporta URL tipo mysql://... (MYSQL_URL / DATABASE_URL) por si Railway cambia nombres.
 const dbUrl = pickEnvOptional(['DB_URL', 'MYSQL_URL', 'DATABASE_URL']);
 
 const explicitHost = pickEnvOptional(['DB_HOST', 'MYSQLHOST', 'MYSQL_HOST']);
@@ -80,7 +77,6 @@ if (explicitHost || explicitUser || explicitDatabase || explicitPortRaw) {
 } else if (dbUrl) {
   ({ host, user, password, database, port } = parseMysqlUrl(dbUrl));
 } else {
-  // Mensaje de error más útil para Railway
   host = pickEnv(['DB_HOST', 'MYSQLHOST', 'MYSQL_HOST']);
 }
 
