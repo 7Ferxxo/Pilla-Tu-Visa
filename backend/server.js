@@ -1,4 +1,4 @@
-require('dotenv').config({ path: require('path').join(__dirname, '.env'), override: true });
+require('dotenv').config({ path: require('path').join(__dirname, '.env'), override: false });
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -425,12 +425,16 @@ app.get('/', (req, res) => {
 app.get('/health', async (req, res) => {
   let dbOk = false;
   try {
-    await db.pool.query('SELECT 1');
-    dbOk = true;
+    if (db && db.dbState && db.dbState.configured === false) {
+      dbOk = false;
+    } else {
+      await db.pool.query('SELECT 1');
+      dbOk = true;
+    }
   } catch {
     dbOk = false;
   }
-  res.status(200).json({ ok: true, dbOk });
+  res.status(200).json({ ok: true, dbOk, dbConfigured: !(db && db.dbState && db.dbState.configured === false) });
 });
 
 app.get('/register', (req, res) => {

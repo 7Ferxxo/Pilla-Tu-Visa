@@ -1,5 +1,5 @@
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env'), override: true });
+require('dotenv').config({ path: path.join(__dirname, '.env'), override: false });
 const mysql = require('mysql2');
 
 function pickEnvOptional(candidates, { allowEmpty = false } = {}) {
@@ -68,39 +68,94 @@ let password;
 let database;
 let port;
 
-if (explicitHost || explicitUser || explicitDatabase || explicitPortRaw) {
-  host = pickEnv(['DB_HOST', 'MYSQLHOST', 'MYSQL_HOST']);
-  user = pickEnv(['DB_USER', 'MYSQLUSER', 'MYSQL_USER']);
-  password = pickEnv(['DB_PASSWORD', 'MYSQLPASSWORD', 'MYSQL_PASSWORD'], { allowEmpty: true });
-  database = pickEnv(['DB_NAME', 'MYSQLDATABASE', 'MYSQL_DATABASE']);
-  port = Number(pickEnv(['DB_PORT', 'MYSQLPORT', 'MYSQL_PORT']));
-} else if (dbUrl) {
-  ({ host, user, password, database, port } = parseMysqlUrl(dbUrl));
-} else {
-  host = pickEnv(['DB_HOST', 'MYSQLHOST', 'MYSQL_HOST']);
+const dbState = {
+  configured: false,
+  missing: [],
+  source: null,
+};
+
+function computeMissingExplicit() {
+  const missing = [];
+  if (!pickEnvOptional(['DB_HOST', 'MYSQLHOST', 'MYSQL_HOST'])) missing.push('DB_HOST/MYSQLHOST/MYSQL_HOST');
+  if (!pickEnvOptional(['DB_USER', 'MYSQLUSER', 'MYSQL_USER'])) missing.push('DB_USER/MYSQLUSER/MYSQL_USER');
+  if (pickEnvOptional(['DB_PASSWORD', 'MYSQLPASSWORD', 'MYSQL_PASSWORD'], { allowEmpty: true }) === undefined) {
+    missing.push('DB_PASSWORD/MYSQLPASSWORD/MYSQL_PASSWORD');
+  }
+  if (!pickEnvOptional(['DB_NAME', 'MYSQLDATABASE', 'MYSQL_DATABASE'])) missing.push('DB_NAME/MYSQLDATABASE/MYSQL_DATABASE');
+  if (!pickEnvOptional(['DB_PORT', 'MYSQLPORT', 'MYSQL_PORT'])) missing.push('DB_PORT/MYSQLPORT/MYSQL_PORT');
+  return missing;
 }
 
-if (!Number.isInteger(port)) {
-  throw new Error('DB_PORT debe ser un número entero');
+function createDummyPool(message) {
+  const err = new Error(message);
+  const reject = async () => {
+    throw err;
+  };
+  return {
+    query: reject,
+    execute: reject,
+    getConnection: reject,
+  };
 }
 
-const pool = mysql.createPool({
-  host,
-  user,
-  password,
-  database,
-  port,
-});
+let pool;
+try {
+  if (explicitHost || explicitUser || explicitDatabase || explicitPortRaw) {
+    const missing = computeMissingExplicit();
+    if (missing.length > 0) {
+      dbState.configured = false;
+      dbState.missing = missing;
+      dbState.source = 'explicit';
+      pool = createDummyPool(`DB no configurada: faltan variables (${missing.join(', ')})`);
+    } else {
+      host = pickEnv(['DB_HOST', 'MYSQLHOST', 'MYSQL_HOST']);
+      user = pickEnv(['DB_USER', 'MYSQLUSER', 'MYSQL_USER']);
+      password = pickEnv(['DB_PASSWORD', 'MYSQLPASSWORD', 'MYSQL_PASSWORD'], { allowEmpty: true });
+      database = pickEnv(['DB_NAME', 'MYSQLDATABASE', 'MYSQL_DATABASE']);
+      port = Number(pickEnv(['DB_PORT', 'MYSQLPORT', 'MYSQL_PORT']));
+      if (!Number.isInteger(port)) throw new Error('DB_PORT debe ser un número entero');
+      dbState.configured = true;
+      dbState.source = 'explicit';
+      pool = mysql.createPool({ host, user, password, database, port });
+    }
+  } else if (dbUrl) {
+    ({ host, user, password, database, port } = parseMysqlUrl(dbUrl));
+    if (!Number.isInteger(port)) throw new Error('DB_PORT debe ser un número entero');
+    dbState.configured = true;
+    dbState.source = 'url';
+    pool = mysql.createPool({ host, user, password, database, port });
+  } else {
+    const missing = ['DB_HOST/MYSQLHOST/MYSQL_HOST'];
+    dbState.configured = false;
+    dbState.missing = missing;
+    dbState.source = 'none';
+    pool = createDummyPool(`DB no configurada: faltan variables (${missing.join(', ')})`);
+  }
+} catch (e) {
+  dbState.configured = false;
+  dbState.missing = dbState.missing && dbState.missing.length ? dbState.missing : ['config inválida'];
+  dbState.source = dbState.source || 'error';
+  pool = createDummyPool(`DB no configurada: ${e && e.message ? e.message : 'config inválida'}`);
+}
 
 async function testConnection() {
   try {
+    if (!dbState.configured) {
+      console.warn('⚠️ DB no configurada. La app iniciará, pero la DB no responderá hasta configurar variables.');
+      return false;
+    }
     const connection = await pool.promise().getConnection();
     console.log('✅ Conectado a MySQL correctamente');
     connection.release();
+    return true;
   } catch (err) {
     console.error('❌ Error conectando a MySQL:', err.message);
     throw err;
   }
 }
 
-module.exports = { pool: pool.promise(), testConnection };
+module.exports = {
+  pool: typeof pool.promise === 'function' ? pool.promise() : pool,
+  testConnection,
+  dbState,
+};
