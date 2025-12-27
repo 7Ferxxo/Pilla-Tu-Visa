@@ -825,6 +825,47 @@ app.get('/recibo/:id', async (req, res) => {
   }
 });
 
+app.get('/recibo/:id/pdf', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).send('ID inválido');
+  }
+
+  try {
+    await ensureRecibosTable();
+    const [rows] = await db.pool.execute(
+      'SELECT id, nombre, email, concepto, monto, metodo FROM recibos WHERE id = ? LIMIT 1',
+      [id]
+    );
+
+    if (!rows || rows.length === 0) {
+      return res.status(404).send('Recibo no encontrado');
+    }
+
+    const r = rows[0];
+    const fechaEmision = formatDateDMY(new Date());
+    const montoFmt = formatMoney(r.monto);
+
+    const pdfBuffer = await pdfService.generateReceiptPdf({
+      reciboId: r.id,
+      fechaEmision,
+      nombre: r.nombre,
+      email: r.email,
+      metodo: r.metodo,
+      concepto: r.concepto,
+      monto: montoFmt,
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="recibo-${r.id}.pdf"`);
+    res.send(pdfBuffer);
+
+  } catch (error) {
+    console.error('Error al generar PDF del recibo:', error);
+    res.status(500).send('Error al generar el PDF');
+  }
+});
+
 app.get('/recibos', requireAuth, async (req, res) => {
   const limitRaw = Number(req.query.limit ?? 200);
   const limit = Number.isInteger(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
@@ -1003,13 +1044,13 @@ app.post('/register', requireAuth, async (req, res) => {
     const reciboId = result.insertId;
 
     const notasText = String(notas ?? '').trim();
+    const fechaEmision = formatDateDMY(new Date());
 
     let receiptHtml = null;
     let receiptSaved = false;
     let receiptSaveError = null;
     try {
       const template = getReceiptTemplate();
-      const fechaEmision = formatDateDMY(new Date());
       const montoFmt = formatMoney(monto);
 
       receiptHtml = renderTemplate(template, {

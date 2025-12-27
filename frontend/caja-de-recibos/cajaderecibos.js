@@ -106,7 +106,11 @@ document.addEventListener('DOMContentLoaded', () => {
         <td class="notes" title="${escapeText(notas)}">${formatNotesHtml(notas)}</td>
         <td>${escapeText(r.metodo)}</td>
         <td class="amount">$${escapeText(formatMoney(r.monto))}</td>
-        <td><a href="/recibo/${encodeURIComponent(String(id))}" target="_blank" rel="noreferrer">Abrir</a></td>
+        <td>
+          <a href="/recibo/${encodeURIComponent(String(id))}" target="_blank" rel="noreferrer">Ver</a>
+          <span style="margin:0 4px; color:#ccc;">|</span>
+          <a href="/recibo/${encodeURIComponent(String(id))}/pdf" target="_blank" rel="noreferrer">PDF</a>
+        </td>
         <td><button type="button" class="btn-delete" data-id="${escapeText(id)}">Eliminar</button></td>
       `;
       bodyEl.appendChild(tr);
