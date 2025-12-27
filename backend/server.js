@@ -8,6 +8,7 @@ const bcrypt = require('bcryptjs');
 const db = require('./db');
 const ai = require('./ai');
 const emailService = require('./email');
+const pdfService = require('./pdfService');
 
 const DEFAULT_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || DEFAULT_SESSION_TTL_MS);
@@ -1048,6 +1049,21 @@ app.post('/register', requireAuth, async (req, res) => {
 
         const montoFmt = formatMoney(monto);
 
+        let receiptPdfBuffer = null;
+        try {
+          receiptPdfBuffer = await pdfService.generateReceiptPdf({
+            reciboId,
+            fechaEmision,
+            nombre,
+            email: emailAddress,
+            metodo,
+            concepto,
+            monto: montoFmt,
+          });
+        } catch (pdfErr) {
+          console.error('Error generando PDF:', pdfErr);
+        }
+
         await emailService.sendReceiptEmail({
           to: emailAddress,
           clienteNombre: nombre,
@@ -1057,6 +1073,7 @@ app.post('/register', requireAuth, async (req, res) => {
           metodo,
           reciboUrl,
           receiptHtml,
+          receiptPdfBuffer,
           baseUrl,
         });
 

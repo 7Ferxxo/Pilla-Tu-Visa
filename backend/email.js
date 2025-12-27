@@ -360,45 +360,12 @@ async function sendReceiptEmail({
   metodo,
   reciboUrl,
   receiptHtml,
+  receiptPdfBuffer,
   baseUrl,
 }) {
   const mailer = buildMailer();
 
   const subject = `Recibo de pago #${reciboId} | Pilla Tu Visa`;
-
-  let embeddedReceipt = '';
-  try {
-    if (receiptHtml && String(receiptHtml).trim()) {
-      const cssPath = path.join(__dirname, 'templates', 'recibo.css');
-      const css = fs.readFileSync(cssPath, 'utf8');
-
-      const extractBodyInner = (docHtml) => {
-        const m = String(docHtml).match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-        return m ? m[1] : String(docHtml);
-      };
-
-      const absolutizeLogo = (htmlFragment) => {
-        if (!baseUrl) return htmlFragment;
-        return String(htmlFragment)
-          .replace(/src=\"\/(imagenes\/[^\"]+)\"/g, `src=\"${escapeHtml(baseUrl)}/$1\"`)
-          .replace(/src=\'\/(imagenes\/[^\']+)\'/g, `src=\'${escapeHtml(baseUrl)}/$1\'`);
-      };
-
-      const bodyInner = extractBodyInner(receiptHtml);
-      embeddedReceipt = `
-        <div style="margin-top:20px;">
-          <h3 style="margin:0 0 10px; color:#111827;">Vista previa del recibo</h3>
-          <div style="border:1px solid #e5e7eb; border-radius:14px; overflow:hidden;">
-            <style>${css}</style>
-            ${absolutizeLogo(bodyInner)}
-          </div>
-          <p style="margin:12px 0 0; color:#6b7280; font-size:12px;">Si no puedes ver la vista previa, usa el botón “Ver recibo”.</p>
-        </div>
-      `;
-    }
-  } catch (e) {
-    embeddedReceipt = '';
-  }
 
   const html = `
   <div style="font-family:Arial,Helvetica,sans-serif; background:#f3f4f6; padding:24px;">
@@ -431,7 +398,13 @@ async function sendReceiptEmail({
   ].join('\n');
 
   const attachments = [];
-  if (receiptHtml && String(receiptHtml).trim()) {
+  if (receiptPdfBuffer) {
+    attachments.push({
+      filename: `recibo-${reciboId}.pdf`,
+      content: receiptPdfBuffer,
+      contentType: 'application/pdf',
+    });
+  } else if (receiptHtml && String(receiptHtml).trim()) {
     attachments.push({
       filename: `recibo-${reciboId}.html`,
       content: String(receiptHtml),
