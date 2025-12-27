@@ -417,8 +417,6 @@ async function sendReceiptEmail({
         <tr><td style="padding:10px 12px; color:#6b7280; font-weight:700;">Monto</td><td style="padding:10px 12px; font-weight:800;">$${escapeHtml(monto)}</td></tr>
       </table>
 
-      ${embeddedReceipt}
-
       <p style="margin:16px 0 0; color:#6b7280; font-size:12px;">Pilla Tu Visa System</p>
     </div>
   </div>`;
